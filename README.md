@@ -152,7 +152,54 @@ python -m pipeline.smoke_mask --all --force --qa qa/
 
 `qa/qa_animation.gif` animates composite-vs-mask side by side. Adjust the
 thresholds in `pipeline/config.py` — **every** tunable lives there — until the
-mask matches the brown areas in BMKG's product.
+mask matches the brown areas in the reference product.
+
+### Where to get the reference imagery
+
+ASMC archives daily NOAA-20/SNPP false-colour imagery by region and date, with
+hotspots overlaid — this is the comparison the plan calls for, and it is
+browsable rather than needing an account:
+
+<https://asmc.asean.org/satellite-polar/> → Region **Kalimantan**, pick the
+date, then *View high-resolution image*. Overpass is around 06:00–06:30 UTC
+(13:00–13:30 WIB), which lands conveniently close to our last usable scene at
+14:00 WIB.
+
+Daily hotspot counts per region, useful as an independent sanity check on the
+FIRMS layer: <https://asmc.asean.org/asmc-haze-hotspot-daily> (switch to the
+VIIRS tab; the AVHRR default reads near zero and is not comparable).
+
+### What the first comparison found (2026-08-21)
+
+Compared ASMC NOAA-20 06:25 UTC against our 07:00 UTC mask.
+
+Agrees:
+
+- Hotspot geography. ASMC counted 667 for Kalimantan against 10 for Sarawak,
+  and its clusters sit where ours do — West Kalimantan plus Central/South.
+- Cloud over North and East Kalimantan.
+- Smoke over West Kalimantan and along the southern coast.
+
+Does not agree, and the resolution is not what it looked like:
+
+- ASMC shows a large tan sheet over the South China Sea north-west of Borneo
+  that our mask does not flag. That looks like a miss. It is not. Smoke is
+  transparent at 1.6 and 2.3 um, so smoke over water leaves SWIR near the
+  open-sea value of ~2%. Measured over that area: **B05 17.3, B06 13.0**,
+  against 19.5 and 14.5 for open sea further north — bright in every band,
+  which is glint or thin cirrus, not smoke. Declining to call it smoke is
+  correct.
+
+Still open after this comparison:
+
+- **Sun glint defeats the water test.** Those glint pixels read B05 ~17, well
+  above `WATER_B05_MAX`, so they are treated as land and get the land rules.
+  Harmless in this scene — the SWIR contrast is far too low to trigger smoke —
+  but it is luck rather than design.
+- **West Kalimantan reads 49.6% of unobscured land as smoke**, which is high
+  against an ASMC frame where that area is mostly green with dense hotspots.
+  Some is certainly real, given the fire count. Whether all of it is remains
+  the open question, and it is the next thing to chase.
 
 **The current defaults have not been compared against BMKG yet.** They were
 set from the 2026-08-21 05:00–07:00 UTC scenes and give 6–10% smoke over the
