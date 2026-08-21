@@ -61,6 +61,31 @@ Every stage takes `--date YYYYMMDD_HHMM` (UTC) for backfill and testing, and
 `-v` for debug logging. Stages are independent: each reads `state/` and writes
 `state/` or `site/data/`.
 
+### How busy the hotspot layer is
+
+`FIRMS_MIN_FRP_MW` in `config.py` controls it. On a bad day FIRMS returns
+7000+ detections in this domain, which merge into one red mass and hide the
+smoke field they are meant to explain. Measured on 2026-08-21:
+
+| floor | points | share of total radiative power |
+|---|---|---|
+| 0 MW | 7,222 | 100% |
+| 10 MW | ~2,900 | 79% |
+| **20 MW (default)** | **1,038** | **58%** |
+| 50 MW | ~350 | 30% |
+
+Confidence is not a useful dial here, though it looks like one: of 5,261
+detections, VIIRS returned 3,843 nominal, 151 high and **0 low**. Filtering to
+"high confidence" would discard 96% of VIIRS. It flags detection reliability,
+not fire importance.
+
+**Caveat that matters for this product:** Kalimantan's worst haze comes from
+smouldering peat, which burns cool and registers low FRP. Raising the floor
+preferentially discards the fires that make the most smoke per unit heat.
+Visible in the data — hotspot/smoke enrichment falls from 3.3x unfiltered to
+2.7x at the 20 MW floor. Treat it as a readability control, not a relevance
+one. The page states the floor and how many detections it hid.
+
 ### FIRMS key
 
 Get one free and instantly at

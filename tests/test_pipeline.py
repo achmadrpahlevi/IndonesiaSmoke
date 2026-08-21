@@ -448,6 +448,26 @@ def test_malformed_rows_do_not_crash_the_layer():
     assert fetch_firms.row_to_feature({}, "s") is None
 
 
+def test_weak_fires_are_filtered_by_radiative_power(monkeypatch):
+    monkeypatch.setattr(C, "FIRMS_MIN_FRP_MW", 20.0)
+    assert fetch_firms.frp_ok({"frp": "35.2"})
+    assert fetch_firms.frp_ok({"frp": "20"})
+    assert not fetch_firms.frp_ok({"frp": "8.4"})
+
+
+def test_unmeasured_fires_are_kept_not_treated_as_zero(monkeypatch):
+    """Absent FRP is unknown, not weak. Dropping it would bias the map."""
+    monkeypatch.setattr(C, "FIRMS_MIN_FRP_MW", 20.0)
+    assert fetch_firms.frp_ok({})
+    assert fetch_firms.frp_ok({"frp": ""})
+    assert fetch_firms.frp_ok({"frp": "not-a-number"})
+
+
+def test_zero_floor_disables_the_power_filter(monkeypatch):
+    monkeypatch.setattr(C, "FIRMS_MIN_FRP_MW", 0.0)
+    assert fetch_firms.frp_ok({"frp": "0.1"})
+
+
 def test_firms_area_string_is_west_south_east_north():
     assert fetch_firms.area_string() == "108.0,-5.0,120.0,8.0"
 

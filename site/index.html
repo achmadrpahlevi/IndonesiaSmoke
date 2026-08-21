@@ -350,6 +350,11 @@
     } else if (m.quality && m.quality.flow_rejected) {
       notes.push("Motion estimate rejected as implausible; smoke shown held in place.");
     }
+    if (m.firms && m.firms.below_frp_floor) {
+      notes.push(m.firms.below_frp_floor.toLocaleString() +
+        " weaker detections below " + m.firms.min_frp_mw +
+        " MW are not shown; smouldering peat burns cool.");
+    }
     if (m.firms && m.firms.stale) {
       // "Cached" is only true if something was actually cached. With a count
       // of zero there is no hotspot layer at all, and saying otherwise would
@@ -491,9 +496,17 @@
         state.meta = state.meta || {};
         state.meta.firms = gj.properties;
       }
+      // Say what the layer is filtered to. A map that quietly drops most of
+      // its detections is claiming completeness it does not have.
       var n = state.fires.getLayers().length;
-      document.getElementById("fire-key").textContent =
-        n ? "Fire hotspots, 24 h (" + n.toLocaleString() + ")" : "Fire hotspot, 24 h";
+      var floor = gj.properties && gj.properties.min_frp_mw;
+      var key = document.getElementById("fire-key");
+      if (n) {
+        key.textContent = "Fire hotspots, 24 h (" + n.toLocaleString() +
+          (floor ? ", ≥" + floor + " MW" : "") + ")";
+      } else {
+        key.textContent = "Fire hotspot, 24 h";
+      }
       return gj;
     }).catch(function (e) {
       console.warn("hotspots unavailable", e);

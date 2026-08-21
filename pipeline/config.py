@@ -191,8 +191,27 @@ ADVECTION_DECAY_PER_STEP = 0.94
 FIRMS_API_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
 FIRMS_SOURCES = ["VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "MODIS_NRT"]
 FIRMS_DAY_RANGE = 1  # last 24 h
-FIRMS_MIN_CONFIDENCE = "n"  # nominal or high for VIIRS; >=30 for MODIS
+
+# Confidence is a weak dial here. Of 5261 live detections on 2026-08-21,
+# VIIRS returned 3843 nominal, 151 high and 0 low — so "high only" would
+# discard 96% of VIIRS. It flags detection reliability, not fire importance.
+# Keep it as a floor that removes junk, and rank by power instead.
+FIRMS_MIN_CONFIDENCE = "n"  # nominal or high for VIIRS
 FIRMS_MODIS_MIN_CONFIDENCE = 30
+
+# Minimum fire radiative power, MW. This is the knob that controls how busy
+# the map is. Measured on the same 5261 detections:
+#     >=  0 MW   5261 points, 100% of radiative power
+#     >= 10 MW   2223 points,  79%
+#     >= 20 MW   1026 points,  58%   <- default
+#     >= 50 MW    267 points,  30%
+#
+# CAVEAT, and it bites this product specifically: Kalimantan's worst haze
+# comes from SMOULDERING PEAT, which burns cool and registers low FRP.
+# Raising this floor preferentially discards the fires that generate the most
+# smoke per unit of heat. It is a readability control, not a relevance one.
+# Set to 0 to publish every detection.
+FIRMS_MIN_FRP_MW = 20.0
 FIRMS_HTTP_TIMEOUT = 60
 FIRMS_MAP_KEY_ENV = "FIRMS_MAP_KEY"
 

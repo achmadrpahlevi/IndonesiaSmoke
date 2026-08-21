@@ -58,6 +58,23 @@ def fetch_source(key: str, source: str, days: int, session=None) -> list[dict]:
     return list(csv.DictReader(io.StringIO(text)))
 
 
+def frp_ok(row: dict) -> bool:
+    """Keep only fires above the radiative-power floor.
+
+    A detection with no FRP reported is kept: absent is not the same as zero,
+    and silently dropping unmeasured fires would bias the map.
+    """
+    if C.FIRMS_MIN_FRP_MW <= 0:
+        return True
+    raw = (row.get("frp") or "").strip()
+    if not raw:
+        return True
+    try:
+        return float(raw) >= C.FIRMS_MIN_FRP_MW
+    except ValueError:
+        return True
+
+
 def confidence_ok(row: dict) -> bool:
     """VIIRS confidence is l/n/h; MODIS is 0-100."""
     raw = (row.get("confidence") or "").strip().lower()
@@ -113,7 +130,7 @@ def row_to_feature(row: dict, source: str) -> dict | None:
     }
 
 
-def collect(days: int, session=None) -> tuple[list[dict], list[str]]:
+def collect(days: int, session=None) -> tuple[list[dict], list[str], int]:
     key = map_key()
     if not key:
         raise RuntimeError(
@@ -123,6 +140,7 @@ def collect(days: int, session=None) -> tuple[list[dict], list[str]]:
     features: list[dict] = []
     used: list[str] = []
     errors: list[str] = []
+    dropped: dict = {}
     for source in C.FIRMS_SOURCES:
         try:
             rows = fetch_source(key, source, days, session=session)
@@ -130,23 +148,37 @@ def collect(days: int, session=None) -> tuple[list[dict], list[str]]:
             log.warning("FIRMS %s unavailable: %s", source, exc)
             errors.append(str(exc))
             continue
-        kept = 0
+        kept = weak = 0
         for row in rows:
             if not confidence_ok(row):
                 continue
             feat = row_to_feature(row, source)
-            if feat:
-                features.append(feat)
-                kept += 1
+            if not feat:
+                continue
+            if not frp_ok(row):
+                weak += 1
+                continue
+            features.append(feat)
+            kept += 1
         used.append(source)
-        log.info("FIRMS %s: %d rows, %d kept in domain", source, len(rows), kept)
+        dropped[source] = weak
+        log.info(
+            "FIRMS %s: %d rows, %d kept, %d below %.0f MW",
+            source, len(rows), kept, weak, C.FIRMS_MIN_FRP_MW,
+        )
 
     if not used:
         raise RuntimeError("; ".join(errors) or "no FIRMS source responded")
-    return features, used
+    return features, used, sum(dropped.values())
 
 
-def write_geojson(features: list[dict], sources: list[str], stale: bool, note: str):
+def write_geojson(
+    features: list[dict],
+    sources: list[str],
+    stale: bool,
+    note: str,
+    below_frp: int = 0,
+):
     out = Path(C.SITE_DATA_DIR) / OUT_NAME
     payload = {
         "type": "FeatureCollection",
@@ -155,6 +187,8 @@ def write_geojson(features: list[dict], sources: list[str], stale: bool, note: s
             "sources": sources,
             "day_range": C.FIRMS_DAY_RANGE,
             "count": len(features),
+            "min_frp_mw": C.FIRMS_MIN_FRP_MW,
+            "below_frp_floor": below_frp,
             "stale": stale,
             "note": note,
         },
@@ -199,11 +233,17 @@ def main(argv=None) -> int:
     common.ensure_dirs(C.SITE_DATA_DIR)
 
     try:
-        features, sources = collect(args.days)
+        features, sources, below = collect(args.days)
     except RuntimeError as exc:
         return degrade(str(exc))
 
-    write_geojson(features, sources, stale=False, note="")
+    write_geojson(features, sources, stale=False, note="", below_frp=below)
+    if below:
+        log.info(
+            "%d detections below the %.0f MW floor were not published "
+            "(config.FIRMS_MIN_FRP_MW)",
+            below, C.FIRMS_MIN_FRP_MW,
+        )
     return 0
 
 
