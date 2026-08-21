@@ -57,8 +57,13 @@ jobs:
           python -m pipeline.fetch_ahi --ensure-pair --skip-night \
             ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
 
+      # --force matters: masks are restored from the Actions cache, and without
+      # it every one of them is skipped as "already done". A threshold change
+      # would then never reach production — the config would say one thing and
+      # the published map would keep showing the old calibration. Re-masking a
+      # handful of cached scenes costs a couple of seconds.
       - name: Build smoke mask
-        run: python -m pipeline.smoke_mask --all
+        run: python -m pipeline.smoke_mask --all --force
 
       - name: Advect forward 0-3 h
         run: python -m pipeline.advect
