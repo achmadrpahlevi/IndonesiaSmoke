@@ -668,6 +668,29 @@ def test_publish_reports_nothing_when_no_mask_ever_saw_daylight(
     assert publish.newest_daylight_mask(common.list_state("mask"))[0] is None
 
 
+def test_forecast_is_matched_to_the_scene_being_published(tmp_path, monkeypatch):
+    """A newer but unusable forecast must not displace the right one."""
+    from pipeline import advect as A
+
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    day, night = NOON, NOON + timedelta(hours=8)
+    for slot in (day, night):
+        np.savez_compressed(
+            A.forecast_path(slot),
+            slot=common.slot_id(slot),
+            steps=np.array(C.FORECAST_STEPS),
+            smoke=np.zeros((len(C.FORECAST_STEPS), 4, 4), np.float32),
+            unverifiable=np.zeros((len(C.FORECAST_STEPS), 4, 4), np.float32),
+            flow=np.zeros((4, 4, 2), np.float32),
+            quality=np.array([{"suppressed": False}], dtype=object),
+        )
+    stored = common.list_state("forecast")
+    assert stored[-1][0] == night, "the night forecast really is newest"
+    matching = [p for slot, p in stored if slot == day]
+    assert len(matching) == 1
+    assert A.load_forecast(matching[0])["slot"] == common.slot_id(day)
+
+
 # --------------------------------------------------------------------------
 # Rendering
 # --------------------------------------------------------------------------

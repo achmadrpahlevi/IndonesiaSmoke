@@ -209,19 +209,21 @@ def publish(outdir: Path) -> int:
         )
         log.warning("publishing frozen: %s", frozen_reason)
 
+    # Look up the forecast FOR THIS SCENE. Taking the newest file and
+    # comparing slots fails the moment a later-but-unusable forecast exists —
+    # a night one, or a leftover from a backfill — and silently drops a
+    # perfectly good forecast that was computed seconds earlier.
     fc = None
-    fc_files = common.list_state("forecast")
-    if fc_files:
-        fc_slot, fc_path = fc_files[-1]
-        if common.slot_id(fc_slot) == common.slot_id(scene_slot):
-            fc = advect_mod.load_forecast(fc_path)
-        else:
-            log.warning(
-                "latest forecast is for %s but latest mask is %s — publishing "
-                "the current field without a forecast",
-                common.slot_id(fc_slot),
-                common.slot_id(scene_slot),
-            )
+    matching = [
+        path for slot, path in common.list_state("forecast") if slot == scene_slot
+    ]
+    if matching:
+        fc = advect_mod.load_forecast(matching[-1])
+    else:
+        log.warning(
+            "no forecast stored for %s — publishing the current field only",
+            common.slot_id(scene_slot),
+        )
 
     outdir.mkdir(parents=True, exist_ok=True)
     layers = {
