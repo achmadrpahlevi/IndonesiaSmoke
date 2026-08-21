@@ -33,6 +33,20 @@ log = None
 # Classification
 # --------------------------------------------------------------------------
 
+def sunz_correct(band: np.ndarray, elevation: np.ndarray) -> np.ndarray:
+    """Raw AHI albedo -> reflectance normalised for solar zenith angle.
+
+    Without this the same smoke reads ~30% fainter at 16:00 than at 13:00 and
+    the mask quietly shrinks through every afternoon.
+    """
+    arr = np.asarray(band, dtype=np.float32)
+    if not C.SUNZ_CORRECT:
+        return arr
+    mu = np.clip(np.sin(np.radians(elevation)), C.MIN_COS_SZA, 1.0)
+    return (arr / mu).astype(np.float32)
+
+
+
 def classify(grids: dict, slot: datetime) -> dict:
     """Scene bands -> masks.
 
@@ -43,9 +57,12 @@ def classify(grids: dict, slot: datetime) -> dict:
       clear     uint8  usable and smoke-free
       stats     dict of coverage fractions
     """
-    b01 = grids["B01"].astype(np.float32)
-    b03 = grids["B03"].astype(np.float32)
-    b06 = grids["B06"].astype(np.float32)
+    lon2d, lat2d = common.grid_mesh()
+    elev = common.solar_elevation(slot, lat2d, lon2d)
+
+    b01, b03, b06 = (
+        sunz_correct(grids[b], elev) for b in ("B01", "B03", "B06")
+    )
     b11 = grids["B11"].astype(np.float32)
     b13 = grids["B13"].astype(np.float32)
     b14 = grids["B14"].astype(np.float32)
@@ -58,8 +75,6 @@ def classify(grids: dict, slot: datetime) -> dict:
         & np.isfinite(b14)
     )
 
-    lon2d, lat2d = common.grid_mesh()
-    elev = common.solar_elevation(slot, lat2d, lon2d)
     daylit = elev >= C.MIN_SOLAR_ELEVATION_DEG
 
     # Cloud: cold tops, blinding brightness, or bright in visible AND SWIR
@@ -189,9 +204,12 @@ def qa_frame(grids: dict, result: dict, slot: datetime):
     from PIL import Image, ImageDraw
 
     # Poor-man's natural colour: red=B03, green=mix, blue=B01. Good enough to
-    # recognise cloud vs smoke vs land by eye.
-    r = _stretch(grids["B03"], 0, 60)
-    b = _stretch(grids["B01"], 0, 60)
+    # recognise cloud vs smoke vs land by eye. Sun-corrected so frames are
+    # comparable across the day, same as the mask sees them.
+    lon2d, lat2d = common.grid_mesh()
+    elev = common.solar_elevation(slot, lat2d, lon2d)
+    r = _stretch(sunz_correct(grids["B03"], elev), 0, 60)
+    b = _stretch(sunz_correct(grids["B01"], elev), 0, 60)
     g = 0.55 * r + 0.45 * b
     rgb = (np.dstack([r, g, b]) ** (1 / 1.6) * 255).astype(np.uint8)
 

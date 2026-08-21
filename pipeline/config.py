@@ -84,18 +84,23 @@ AHI_HTTP_RETRIES = 3
 # IR bands as brightness temperature in kelvin. Thresholds below use those
 # native units — do not rescale.
 
-# Smoke is bright in the blue band but not cloud-bright.
-SMOKE_B01_MIN = 10.0
+# Smoke is bright in the blue band but not cloud-bright. On a smoky day the
+# whole domain sits high — clear sea measured ~13% and clear forest ~20% in
+# the 2026-08-21 scenes — so this only screens out dark water and shadow.
+SMOKE_B01_MIN = 14.0
 SMOKE_B01_MAX = 40.0
 
 # Smoke scatters far more blue than red.
-SMOKE_B01_MINUS_B03_MIN = 1.5
+SMOKE_B01_MINUS_B03_MIN = 6.0
 
-# THE discriminating test. Aerosol scattering falls off steeply with
-# wavelength, so a smoke pall is bright at 0.64 um and nearly invisible at
-# 2.3 um. Cloud and bare soil are bright in both, clear vegetation is dark
-# in the red and moderately bright in the SWIR (so this goes negative).
-SMOKE_B03_MINUS_B06_MIN = 1.0
+# THE discriminating test, and the first knob to reach for. Aerosol
+# scattering falls off steeply with wavelength, so a smoke pall is bright at
+# 0.64 um and nearly invisible at 2.3 um, while cloud and bare soil are
+# bright in both. Measured behaviour over Kalimantan:
+#     >= 3  bleeds into scattered cumulus over land   (~19% of domain)
+#     >= 6  the coherent pall, this default           (~ 8%)
+#     >= 7  the densest core only                     (~ 5%)
+SMOKE_B03_MINUS_B06_MIN = 6.0
 
 # Reflectance excess at which the overlay reaches full opacity.
 SMOKE_DENSITY_SPAN = 8.0
@@ -103,9 +108,12 @@ SMOKE_DENSITY_SPAN = 8.0
 # Smoke is optically thin in the IR window, so the surface stays warm.
 SMOKE_B13_MIN_K = 280.0
 
-# Split-window: water/ice cloud gives B11-B14 near or below zero;
-# smoke and dust push it up.
-SMOKE_BTD_1114_MIN = -2.5
+# Split-window. Textbook says water/ice cloud sits near or below zero and
+# smoke pushes it up — but over this domain it mostly separates land (median
+# -1.8) from sea (-2.5), i.e. surface emissivity, not aerosol. Kept as a
+# permissive guard against cloud edges rather than a smoke test. Do not
+# tighten it without checking you are not just selecting land.
+SMOKE_BTD_1114_MIN = -3.5
 
 # Cloud test — anything colder or brighter than this is "obscured",
 # never advected (non-negotiable #2). The SWIR pair catches warm low cumulus
@@ -117,6 +125,15 @@ CLOUD_B06_MIN = 18.0
 
 # Minimum solar elevation for the visible bands to be usable.
 MIN_SOLAR_ELEVATION_DEG = 12.0
+
+# satpy hands back raw AHI albedo, which falls as the sun drops. Left
+# uncorrected the smoke field appears to shrink every afternoon — an
+# artefact optical flow reads as convergence. Dividing by cos(solar zenith)
+# makes the thresholds above mean the same thing all day. The floor keeps
+# the division from exploding near the terminator.
+SUNZ_CORRECT = True
+MIN_COS_SZA = 0.15  # ~81 degrees zenith
+VISIBLE_BANDS = ["B01", "B02", "B03", "B04", "B05", "B06"]
 
 # Speckle removal: drop smoke blobs smaller than this many grid cells.
 SMOKE_MIN_BLOB_CELLS = 12

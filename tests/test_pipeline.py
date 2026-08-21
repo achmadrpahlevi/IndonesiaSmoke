@@ -181,11 +181,53 @@ def test_cloud_is_obscured_and_never_reported_as_smoke():
 
 
 def test_bright_bare_ground_is_not_smoke():
-    """High visible AND high SWIR is soil or cloud. Never smoke."""
-    soil = {"B01": 20.0, "B03": 28.0, "B05": 34.0, "B06": 30.0,
+    """Soil is as bright in the SWIR as in the red, so B03-B06 rejects it.
+
+    Values chosen to stay under the cloud test, so this exercises the smoke
+    discriminator rather than passing for the wrong reason.
+    """
+    soil = {"B01": 18.0, "B03": 18.0, "B05": 28.0, "B06": 22.0,
             "B11": 300.0, "B13": 305.0, "B14": 304.0}
     out = smoke_mask.classify(synthetic_scene(p=(PATCH, soil)), NOON)
+    assert not out["obscured"][PATCH].any(), "should not be screened out as cloud"
     assert not out["smoke_bin"][PATCH].any()
+
+
+# --------------------------------------------------------------------------
+# Solar zenith correction — without it the mask shrinks every afternoon
+# --------------------------------------------------------------------------
+
+def test_sun_correction_brightens_more_as_the_sun_gets_lower():
+    band = np.array([[10.0, 10.0]], dtype=np.float32)
+    high = smoke_mask.sunz_correct(band, np.array([[90.0, 90.0]]))
+    low = smoke_mask.sunz_correct(band, np.array([[30.0, 30.0]]))
+    assert high[0, 0] == pytest.approx(10.0)
+    assert low[0, 0] == pytest.approx(20.0)  # sin(30) = 0.5
+
+
+def test_sun_correction_is_bounded_near_the_terminator():
+    """A naive 1/cos blows up at sunrise; the floor keeps it finite."""
+    out = smoke_mask.sunz_correct(np.array([[10.0]], np.float32), np.array([[0.5]]))
+    assert np.isfinite(out).all()
+    assert out[0, 0] == pytest.approx(10.0 / C.MIN_COS_SZA)
+
+
+def test_the_same_smoke_is_detected_early_and_late_in_the_day():
+    """The point of the correction: thresholds mean the same thing all day."""
+    afternoon = datetime(2026, 8, 21, 9, 0, tzinfo=UTC)  # 16:00 WIB, low sun
+    raw_scene = synthetic_scene(p=(PATCH, SMOKE_VALUES))
+
+    # Dim the whole scene the way a lower sun would.
+    lon2d, lat2d = common.grid_mesh()
+    mu = np.sin(np.radians(common.solar_elevation(afternoon, lat2d, lon2d)))
+    dimmed = dict(raw_scene)
+    for band in ("B01", "B03", "B05", "B06"):
+        dimmed[band] = (raw_scene[band] * np.clip(mu, C.MIN_COS_SZA, 1.0)).astype(
+            np.float32
+        )
+
+    out = smoke_mask.classify(dimmed, afternoon)
+    assert out["smoke_bin"][PATCH].all()
 
 
 def test_nothing_is_detected_at_night():

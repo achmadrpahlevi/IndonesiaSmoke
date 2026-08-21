@@ -106,8 +106,30 @@ python -m pipeline.smoke_mask --all --force --qa qa/
 
 `qa/qa_animation.gif` animates composite-vs-mask side by side. Adjust the
 thresholds in `pipeline/config.py` — **every** tunable lives there — until the
-mask matches the brown areas in BMKG's product. The discriminating knobs, in
-rough order of impact:
+mask matches the brown areas in BMKG's product.
+
+**The current defaults have not been compared against BMKG yet.** They were
+set from the 2026-08-21 05:00–07:00 UTC scenes and give 6–10% smoke over the
+domain, concentrated on the West Kalimantan coast and the Central Kalimantan
+peatlands. That is plausible but unverified — the BMKG comparison is still the
+gate before anyone should trust the numbers.
+
+Three things learned calibrating them, worth not rediscovering:
+
+- **Blue-minus-red alone does not work here.** Over dark forest it is
+  dominated by Rayleigh scattering, so it painted most of Borneo as smoke.
+  `B03−B06` (red minus 2.3 µm SWIR) is the test that actually separates
+  smoke from cloud and soil, because aerosol scattering is nearly absent at
+  2.3 µm. It is the dominant control — the other thresholds barely move the
+  answer once it is set.
+- **There is no clean-atmosphere background on a smoky day.** Clear sea
+  measured B01 ≈ 13% and clear forest ≈ 20%, not the ~8% a clean profile
+  would give. Thresholds picked from textbook clear values are inert here.
+- **`B11−B14` separates land from sea, not smoke from clear** over this
+  domain (medians −1.8 vs −2.5). It is kept only as a permissive cloud-edge
+  guard. Tighten it and you are selecting land, not smoke.
+
+The discriminating knobs, in rough order of impact:
 
 | Constant | Raise it to… |
 |---|---|
@@ -123,7 +145,15 @@ python -m pipeline.advect --date 20260821_0600 --verify 20260821_0700
 ```
 
 It reports CSI/POD/FAR alongside the persistence CSI. If advection does not
-beat persistence, the flow is not earning its place.
+beat persistence, the flow is not earning its place. On the 2026-08-21 case
+it does, modestly:
+
+| lead | CSI | persistence CSI | POD | FAR |
+|---|---|---|---|---|
+| +30 min | 0.446 | 0.420 | 0.697 | 0.447 |
+| +60 min | 0.310 | 0.276 | 0.434 | 0.480 |
+
+One case is not a validation study, and the plan does not claim one.
 
 ## Guarantees the code keeps
 
@@ -138,6 +168,10 @@ beat persistence, the flow is not earning its place.
 5. **All tunables in `config.py`.**
 6. **Secondary layers degrade alone.** No FIRMS key, no GFS, or an implausible
    flow field each degrade their own layer and leave the rest standing.
+7. **Thresholds mean the same thing all day.** Visible reflectance is divided
+   by cos(solar zenith) before classification. Without it the mask shrank
+   through every afternoon — 9.6% at 12:00 WIB down to 3.4% at 14:00 — purely
+   from the sun dropping, which optical flow would then read as convergence.
 
 ## Tests
 
