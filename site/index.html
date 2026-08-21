@@ -348,7 +348,12 @@
       notes.push("Motion estimate rejected as implausible; smoke shown held in place.");
     }
     if (m.firms && m.firms.stale) {
-      notes.push("Hotspots are cached, not current.");
+      // "Cached" is only true if something was actually cached. With a count
+      // of zero there is no hotspot layer at all, and saying otherwise would
+      // have the map claim knowledge it does not have.
+      notes.push(m.firms.count
+        ? "Hotspots are cached, not current."
+        : "Hotspot layer unavailable — no fire detections loaded.");
     }
     if (age !== null && age > limit) {
       notes.push("This map is older than " + limit + " minutes. Treat it as history, not nowcast.");
