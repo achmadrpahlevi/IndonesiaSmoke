@@ -263,11 +263,17 @@ def list_state(prefix: str) -> list[tuple[datetime, Path]]:
 def prune_state(prefix: str, keep: int = 8, drop_dark: bool = True) -> None:
     """State is a rolling window; advection only ever needs the last two.
 
-    Dark slots are dropped first, before the newest-N rule is applied. A scene
-    from last night is newer than every daylight scene of the day, so a plain
-    newest-N window fills up with darkness and evicts the very partner a
-    backfill just downloaded — which is how a freshly fetched flow partner
-    ended up deleted seconds after arriving.
+    Slots outside the publishable window are dropped first, before the
+    newest-N rule is applied. A scene from last night is newer than every
+    daylight scene of the day, so a plain newest-N window fills up with
+    darkness and evicts the very partner a backfill just downloaded — which is
+    how a freshly fetched flow partner ended up deleted seconds after arriving.
+
+    Note this uses domain_is_daylit, which since the threshold split means
+    "inside the calibrated sun-angle range", not merely "not night". Scenes
+    that are perfectly visible but too low-sun to publish are dropped too.
+    That is right for the pipeline and surprising for diagnostics: set
+    KALIMSMOKE_STATE elsewhere and stub this out when you want to keep one.
     """
     entries = list_state(prefix)
     if drop_dark:

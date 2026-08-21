@@ -112,18 +112,42 @@ BMKG's 16:00 WIB analysis versus our 14:00 WIB run:
 | Wind from **Tenggara** (SE) | 167 deg is SSE | **match** |
 | *Transboundary Haze* West Kalimantan -> **Sarawak** | plume extends NW from West Kalimantan toward Sarawak | **match** |
 | Smoke in W, C, E, N, S **Kalimantan** | detected in West and Central/South | partial - we miss E/N Kalimantan, which was under cloud |
-| Smoke in **Riau, Jambi, N and S Sumatra** | ~0.3% of Sumatra flagged | **miss** |
+| Smoke in **Riau, Jambi, N and S Sumatra** | ~0.3% of Sumatra flagged at 14:00 | **timing, not a miss** - see below |
 
 The direction agreement is the most valuable result: an independent expert
 assessment of where the smoke is going matches what Farneback derived from two
 frames, with no wind input at all.
 
-The Sumatra miss is the open item. Our own radiometry said there was no
-enhancement there - near-fire B03-B06 of 2.69 against a 3.41 background - and
-the coastal signal we *were* detecting turned out to be river sediment. BMKG,
-using a different RGB method two hours later, draws polygons there. One of
-these is wrong and it is not yet clear which. That is the next thing to chase,
-and it is a better-posed question than "tune the thresholds".
+#### The Sumatra disagreement, resolved
+
+BMKG draws smoke polygons over Riau, Jambi and South Sumatra at 16:00 WIB; we
+flag almost nothing at 14:00. That looked like a detection failure. It is a
+coverage gap. Median `B03-B06` over land, threshold 6.0:
+
+| region | 14:00 WIB | 16:00 WIB | ratio to control, 14:00 -> 16:00 |
+|---|---|---|---|
+| Riau | 3.92 | 8.90 | 0.56 -> 0.48 |
+| Jambi | 2.45 | 9.00 | 0.35 -> 0.49 |
+| South Sumatra | 2.19 | 9.18 | 0.31 -> 0.50 |
+| West Kalimantan (control) | 6.97 | 18.41 | - |
+
+Two things follow.
+
+**Inside our window we are right.** At 14:00 Sumatra sits at 2.2-3.9 against a
+threshold of 6.0, while West Kalimantan, where both products agree smoke
+exists, sits at 6.97. There is no signal there to miss.
+
+**The 16:00 rise is partly real and partly the sun.** Everything inflates at
+low sun - the control more than doubles - so the raw jump to ~9 cannot be read
+as smoke. Normalised against the control, Jambi and South Sumatra genuinely
+strengthen (0.35 -> 0.49, 0.31 -> 0.50) while Riau weakens (0.56 -> 0.48). So
+smoke did develop over southern Sumatra during the afternoon, after our day
+ends, which is exactly when BMKG publishes.
+
+The disagreement is therefore about *when*, not *what*. It is the strongest
+argument yet for widening the window past 14:00 WIB, and it makes the
+sun-angle correction the highest-value piece of work left: fixing it would let
+this product cover the part of the day when Sumatran haze actually appears.
 
 ### Why these choices
 
