@@ -455,6 +455,47 @@ def test_flow_conditioning_ignores_untrusted_cells():
 # Verification scoring
 # --------------------------------------------------------------------------
 
+def write_mask(slot, clear_fraction, smoke=None):
+    ny, nx = C.GRID_NY, C.GRID_NX
+    if smoke is None:
+        smoke = np.zeros((ny, nx), np.float32)
+    np.savez_compressed(
+        common.mask_path(slot),
+        slot=common.slot_id(slot),
+        smoke=smoke,
+        smoke_bin=(smoke > 0).astype(np.uint8),
+        obscured=np.zeros((ny, nx), np.uint8),
+        clear=np.ones((ny, nx), np.uint8),
+        stats=np.array([{"clear_fraction": clear_fraction}], dtype=object),
+    )
+
+
+def test_a_blind_night_mask_is_never_used_for_flow(tmp_path, monkeypatch):
+    """At dawn the newest masks are last night's. Pairing one against the
+    first daylight frame makes Farneback match darkness to a lit scene."""
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    advect.log = common.setup_logging(False)
+
+    night_a = NOON - timedelta(minutes=90)
+    night_b = NOON - timedelta(minutes=60)
+    write_mask(night_a, clear_fraction=0.0)   # 100% obscured
+    write_mask(night_b, clear_fraction=0.0)
+    assert not advect.mask_is_usable(common.mask_path(night_a))
+
+    # Only blind masks available -> no pair at all.
+    assert advect.find_pair()[0] is None
+
+    # One daylight frame is still not a pair; it must not partner with night.
+    write_mask(NOON, clear_fraction=0.9)
+    assert advect.find_pair()[0] is None
+
+    # Two daylight frames -> a pair, and it is the daylight one.
+    write_mask(NOON + timedelta(minutes=30), clear_fraction=0.9)
+    (t_prev, _), (t_curr, _) = advect.find_pair()
+    assert t_prev == NOON
+    assert t_curr == NOON + timedelta(minutes=30)
+
+
 def test_a_perfect_forecast_scores_csi_one(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "STATE_DIR", tmp_path)
     truth_slot = NOON + timedelta(minutes=30)

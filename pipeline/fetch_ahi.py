@@ -360,6 +360,14 @@ def main(argv=None) -> int:
             "partner close enough to compute optical flow from (cold cache)"
         ),
     )
+    parser.add_argument(
+        "--skip-night",
+        action="store_true",
+        help=(
+            "exit immediately when the domain is dark. The mask needs visible "
+            "bands, so a night scene is ~240 MB fetched to produce nothing"
+        ),
+    )
     parser.add_argument("--force", action="store_true", help="re-grid even if present")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -374,6 +382,17 @@ def main(argv=None) -> int:
     target = (
         common.parse_cli_datetime(args.date) if args.date else common.utcnow()
     )
+
+    if args.skip_night:
+        lit, elev = common.domain_is_daylit(target)
+        if not lit:
+            log.info(
+                "domain is dark at %s (mean solar elevation %.0f deg) — "
+                "skipping the fetch; the published product stays frozen",
+                common.slot_id(target),
+                elev,
+            )
+            return 0
 
     session = requests.Session()
     got = []

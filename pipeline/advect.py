@@ -156,15 +156,33 @@ def integrate(
 # Orchestration
 # --------------------------------------------------------------------------
 
+def mask_is_usable(path: Path) -> bool:
+    """Could this mask actually see anything?
+
+    Night masks are 100% obscured. Pairing one with the first daylight frame
+    would have Farneback match darkness against a lit scene, which is exactly
+    the situation at dawn every morning.
+    """
+    try:
+        with np.load(path, allow_pickle=True) as data:
+            stats = dict(data["stats"][0])
+    except (OSError, ValueError, KeyError, IndexError):
+        return False
+    return float(stats.get("clear_fraction", 0.0)) >= C.MIN_CLEAR_FRACTION
+
+
 def find_pair(target: datetime | None = None):
-    """The two most recent masks close enough in time to compute flow from."""
+    """The two most recent usable masks close enough to compute flow from."""
     masks = common.list_state("mask")
-    if len(masks) < 2:
-        return None, None
     if target is not None:
         masks = [m for m in masks if m[0] <= target]
-        if len(masks) < 2:
-            return None, None
+
+    blind = [m for m in masks if not mask_is_usable(m[1])]
+    masks = [m for m in masks if mask_is_usable(m[1])]
+    if blind:
+        log.debug("ignoring %d mask(s) with nothing visible", len(blind))
+    if len(masks) < 2:
+        return None, None
     (t_prev, p_prev), (t_curr, p_curr) = masks[-2], masks[-1]
     gap = common.minutes_between(t_curr, t_prev)
     if gap > C.MAX_FLOW_PAIR_GAP_MINUTES:
@@ -360,6 +378,15 @@ def main(argv=None) -> int:
     target = common.parse_cli_datetime(args.date) if args.date else None
     fc = forecast(target)
     if fc is None:
+        # No usable pair is the expected state at night, not a failure.
+        lit, elev = common.domain_is_daylit(common.utcnow())
+        if not lit:
+            log.info(
+                "domain is dark (mean solar elevation %.0f deg) — nothing to "
+                "advect; the last daylight forecast stands",
+                elev,
+            )
+            return 0
         return 1
 
     if args.verify:

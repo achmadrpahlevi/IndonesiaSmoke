@@ -54,7 +54,7 @@ jobs:
       - name: Fetch Himawari-9 scene
         id: fetch
         run: |
-          python -m pipeline.fetch_ahi --ensure-pair \
+          python -m pipeline.fetch_ahi --ensure-pair --skip-night \
             ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
 
       - name: Build smoke mask
