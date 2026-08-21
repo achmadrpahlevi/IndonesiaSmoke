@@ -53,6 +53,50 @@ roughly 50–55°, so pixels are stretched to 3–4 km and the atmospheric path 
 longer than over Borneo. Mask thresholds were tuned over Borneo; treat smoke
 detections near the far west as less reliable than those over Kalimantan.
 
+### How this compares to BMKG and ASMC
+
+Checked against both, 2026-08-21/22, rather than assumed.
+
+| | BMKG | ASMC | KalimSmoke |
+|---|---|---|---|
+| Source | Himawari-9 | NOAA-20 / SNPP (polar) | Himawari-9 |
+| Cadence | **~10 min** | ~1 overpass/day per region | 30 min |
+| Latency | **~12 min observed** | hours | ~30–45 min |
+| Hours | **24 h** (IR works at night) | 1 daytime pass | 09:30–14:00 WIB only |
+| Coverage | all Indonesia | ASEAN, by region | 100–120°E, 5°S–8°N |
+| Smoke | visible in Natural Colour imagery, not delineated | visible in false colour, not delineated | **gridded 2 km mask** |
+| Fire detection | Geohotspot, Himawari IR | VIIRS counts by region & confidence | FIRMS VIIRS+MODIS, 375 m |
+| **Forward projection** | — | daily narrative outlook | **0–3 h gridded, 30-min steps** |
+| Status | official, mandated | official, mandated | unvalidated side project |
+
+Where they are better, and it is not close:
+
+- **BMKG beats us on cadence, latency, hours and authority.** 10-minute
+  imagery, ~12 minutes old, all day and all night, for the whole country. Our
+  window is 4.5 hours a day. If you want to know what the smoke is doing right
+  now, use BMKG.
+- **ASMC beats us on fire counting and on transboundary assessment.** Regional
+  hotspot counts split by confidence, plus haze warnings written by
+  meteorologists. Its VIIRS counts are the right independent check on our
+  FIRMS layer — 667 for Kalimantan against 10 for Sarawak on 2026-08-21.
+- BMKG's Geohotspot means our hotspot layer duplicates something already
+  published at higher cadence. FIRMS earns its place only because 375 m VIIRS
+  resolves smouldering peat that Himawari's IR cannot.
+
+What is actually ours:
+
+- **Nobody else publishes a gridded smoke field that moves.** BMKG shows you
+  imagery a human reads; ASMC writes a daily outlook. Neither delineates smoke
+  on a grid, and neither projects it forward in 30-minute steps you can scrub
+  through. That is the whole gap, and it is a narrow one.
+- Honest uncertainty: cloud hatching, a staleness banner, a suppressed
+  forecast when too little is visible. Operational products rarely show their
+  own blind spots this plainly.
+
+Read the table as scope, not as a claim to beat them. Four and a half hours a
+day of unvalidated 0–3 h advection is a complement to BMKG and ASMC, not a
+substitute for either, which is what the caption on every view says.
+
 ### Why these choices
 
 | | |
