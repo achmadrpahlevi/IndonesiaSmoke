@@ -1,0 +1,20 @@
+# Raw HSD scratch — never commit, deleted after every run anyway
+work/
+
+# Gridded scenes and masks carried between runs
+state/
+
+# Published outputs are built by Actions and committed to gh-pages,
+# not to main. Keep the directory itself.
+site/data/*
+!site/data/.gitkeep
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# QA frames from smoke_mask --qa
+qa/

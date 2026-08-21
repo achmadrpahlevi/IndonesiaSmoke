@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KalimSmoke — Kalimantan smoke, now and next 3 hours</title>
+<meta name="description" content="Indicative short-range smoke movement over Kalimantan from Himawari-9, with NASA FIRMS hotspots. Daytime only.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root {
+    --surface:      #fcfcfb;
+    --panel:        rgba(252,252,251,.94);
+    --ink:          #1a1a19;
+    --ink-2:        #45443f;
+    --ink-muted:    #6d6c65;
+    --line:         rgba(26,26,25,.14);
+    --shadow:       0 2px 14px rgba(26,26,25,.16);
+    --good:         #0ca30c;
+    --warning:      #fab219;
+    --critical:     #d03b3b;
+    --smoke-1:      #ffd896;
+    --smoke-2:      #e0a862;
+    --smoke-3:      #b0602a;
+    --hotspot:      #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface:   #1a1a19;
+      --panel:     rgba(26,26,25,.93);
+      --ink:       #f2f1ec;
+      --ink-2:     #cfcec7;
+      --ink-muted: #97968f;
+      --line:      rgba(242,241,236,.16);
+      --shadow:    0 2px 14px rgba(0,0,0,.5);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background: var(--surface);
+    -webkit-text-size-adjust: 100%;
+  }
+  #map { position: absolute; inset: 0; background: var(--surface); }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(8px);
+  }
+
+  /* ---------- header ---------- */
+  #header {
+    position: absolute; z-index: 500;
+    top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px;
+    max-width: 520px;
+    padding: 9px 12px;
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  }
+  #title { font-weight: 650; letter-spacing: -.01em; }
+  #title small { font-weight: 450; color: var(--ink-muted); }
+  #status {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-variant-numeric: tabular-nums; font-weight: 550;
+    margin-left: auto;
+  }
+  #status .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--good); flex: none;
+  }
+  #status.warn .dot { background: var(--warning); }
+  #status.stale .dot { background: var(--critical); }
+  #status.stale { color: var(--critical); }
+  #notice {
+    flex-basis: 100%;
+    color: var(--ink-2); font-size: 12.5px;
+    padding-top: 6px; margin-top: 2px; border-top: 1px solid var(--line);
+  }
+  #notice:empty { display: none; }
+
+  /* ---------- time control ---------- */
+  #timebar {
+    position: absolute; z-index: 500;
+    left: 10px; right: 10px; bottom: max(56px, calc(env(safe-area-inset-bottom) + 52px));
+    max-width: 520px;
+    padding: 10px 12px 12px;
+  }
+  #timerow { display: flex; align-items: center; gap: 10px; }
+  #play {
+    flex: none; width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid var(--line); background: transparent; color: var(--ink);
+    font-size: 13px; cursor: pointer; line-height: 1;
+  }
+  #play:hover { border-color: var(--ink-muted); }
+  #slider { flex: 1; min-width: 0; accent-color: var(--smoke-3); height: 34px; }
+  #leadlabel {
+    flex: none; min-width: 118px; text-align: right;
+    font-variant-numeric: tabular-nums; font-weight: 600;
+  }
+  #leadlabel span { display: block; font-weight: 450; font-size: 12px; color: var(--ink-muted); }
+  #ticks {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--ink-muted); padding: 2px 42px 0 44px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- legend ---------- */
+  #legend {
+    position: absolute; z-index: 500;
+    right: 10px; bottom: max(56px, calc(env(safe-area-inset-bottom) + 52px));
+    padding: 10px 12px; width: 172px;
+  }
+  #legend h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+               letter-spacing: .06em; color: var(--ink-muted); font-weight: 600; }
+  .ramp { height: 9px; border-radius: 4px;
+          background: linear-gradient(90deg, var(--smoke-1), var(--smoke-2), var(--smoke-3)); }
+  .ramp-labels { display: flex; justify-content: space-between;
+                 font-size: 11px; color: var(--ink-muted); margin-top: 3px; }
+  .key { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 12px; color: var(--ink-2); }
+  .swatch { width: 15px; height: 15px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
+  .swatch.obscured {
+    background-image: repeating-linear-gradient(45deg,
+      #96969f 0 2px, transparent 2px 7px);
+  }
+  .swatch.hotspot {
+    border: none; border-radius: 50%; width: 11px; height: 11px;
+    background: var(--hotspot); box-shadow: 0 0 0 3px rgba(208,59,59,.25);
+  }
+  .swatch.wind { border: none; color: var(--ink-muted); font-size: 14px;
+                 line-height: 15px; text-align: center; }
+  .wind-arrow {
+    color: var(--ink-muted); opacity: .75; font-size: 15px; line-height: 1;
+    text-align: center; pointer-events: none; will-change: transform;
+  }
+  #layers { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  #layers label { display: flex; align-items: center; gap: 7px; font-size: 12px;
+                  color: var(--ink-2); cursor: pointer; padding: 2px 0; }
+  #layers input { accent-color: var(--smoke-3); }
+
+  /* ---------- caption ---------- */
+  #caption {
+    position: absolute; z-index: 500;
+    left: 10px; right: 10px; bottom: max(8px, env(safe-area-inset-bottom));
+    font-size: 11.5px; color: var(--ink-2);
+    padding: 6px 10px;
+  }
+  #caption a { color: inherit; }
+
+  .leaflet-container { background: var(--surface); font: inherit; }
+  .city-label {
+    font-size: 11px; font-weight: 600; color: var(--ink);
+    text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface), 0 0 3px var(--surface);
+    white-space: nowrap; pointer-events: none;
+  }
+  .leaflet-popup-content { font: inherit; margin: 10px 12px; }
+  .leaflet-popup-content b { font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 640px) {
+    #legend { display: none; }
+    #legend.open { display: block; left: 10px; right: 10px; width: auto; bottom: auto;
+                   top: max(96px, calc(env(safe-area-inset-top) + 86px)); }
+    #header { max-width: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of smoke over Kalimantan"></div>
+
+<header id="header" class="panel">
+  <div id="title">KalimSmoke <small>· Kalimantan</small></div>
+  <div id="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="statustext">loading…</span></div>
+  <div id="notice"></div>
+</header>
+
+<div id="timebar" class="panel" hidden>
+  <div id="timerow">
+    <button id="play" type="button" aria-label="Play forecast animation">▶</button>
+    <input id="slider" type="range" min="0" max="0" step="1" value="0"
+           aria-label="Forecast lead time">
+    <div id="leadlabel">Now<span id="validlabel"></span></div>
+  </div>
+  <div id="ticks"></div>
+</div>
+
+<div id="legend" class="panel">
+  <h4>Smoke density</h4>
+  <div class="ramp"></div>
+  <div class="ramp-labels"><span>thin</span><span>thick</span></div>
+  <div class="key"><span class="swatch obscured"></span> Obscured by cloud</div>
+  <div class="key"><span class="swatch hotspot"></span> Fire hotspot, 24 h</div>
+  <div class="key" id="key-wind" hidden><span class="swatch wind">↑</span> 850 hPa wind</div>
+  <div id="layers">
+    <label><input type="checkbox" id="tg-smoke" checked> Smoke</label>
+    <label><input type="checkbox" id="tg-obscured" checked> Cloud hatching</label>
+    <label><input type="checkbox" id="tg-fires" checked> Hotspots</label>
+    <label id="lb-wind" hidden><input type="checkbox" id="tg-wind"> Wind arrows</label>
+    <label><input type="checkbox" id="tg-labels" checked> City labels</label>
+  </div>
+</div>
+
+<footer id="caption" class="panel">
+  Indicative short-range smoke movement, daytime only. Not an official forecast —
+  see <a href="https://www.bmkg.go.id/" target="_blank" rel="noopener">BMKG</a> and
+  <a href="http://asmc.asean.org/" target="_blank" rel="noopener">ASMC</a>.
+  Himawari-9 via NOAA · hotspots NASA FIRMS.
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+(function () {
+  "use strict";
+
+  var DATA = "data/";
+  var REFRESH_MS = 5 * 60 * 1000;
+  var FRAME_MS = 900;
+
+  var map = L.map("map", {
+    zoomControl: false,
+    attributionControl: true,
+    minZoom: 4,
+    maxZoom: 10
+  });
+  L.control.zoom({ position: "topright" }).addTo(map);
+
+  var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png",
+    {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: "abcd",
+      maxZoom: 10
+    }
+  ).addTo(map);
+
+  var smokePane = map.createPane("smokePane");
+  smokePane.style.zIndex = 410;
+  var obscPane = map.createPane("obscPane");
+  obscPane.style.zIndex = 420;
+  var firePane = map.createPane("firePane");
+  firePane.style.zIndex = 440;
+
+  var state = {
+    meta: null,
+    frames: [],        // {minutes, layer, label, validLabel}
+    index: 0,
+    obscured: null,
+    fires: L.layerGroup(),
+    wind: L.layerGroup(),
+    windMeta: null,
+    cities: L.layerGroup(),
+    playing: false,
+    timer: null
+  };
+
+  var el = {
+    status: document.getElementById("status"),
+    statusText: document.getElementById("statustext"),
+    notice: document.getElementById("notice"),
+    timebar: document.getElementById("timebar"),
+    slider: document.getElementById("slider"),
+    play: document.getElementById("play"),
+    lead: document.getElementById("leadlabel"),
+    valid: document.getElementById("validlabel"),
+    ticks: document.getElementById("ticks")
+  };
+
+  // ---------------------------------------------------------------- helpers
+
+  function bust(url) { return DATA + url + "?t=" + Date.now(); }
+
+  function getJSON(name) {
+    return fetch(bust(name), { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error(name + ": HTTP " + r.status);
+      return r.json();
+    });
+  }
+
+  function minutesSince(iso) {
+    var t = Date.parse(iso);
+    if (isNaN(t)) return null;
+    return (Date.now() - t) / 60000;
+  }
+
+  function localTime(iso, offsetHours) {
+    var t = Date.parse(iso);
+    if (isNaN(t)) return "--:--";
+    var d = new Date(t + offsetHours * 3600 * 1000);
+    return String(d.getUTCHours()).padStart(2, "0") + ":" +
+           String(d.getUTCMinutes()).padStart(2, "0");
+  }
+
+  // Staleness is never colour alone — the words say it too.
+  function renderStatus() {
+    var m = state.meta;
+    if (!m) return;
+    var age = minutesSince(m.scene_utc);
+    var limit = m.stale_after_minutes || 90;
+    var tz = m.tz_label || "WIB";
+    var clock = localTime(m.scene_utc, m.tz_offset_hours != null ? m.tz_offset_hours : 7);
+    var cls = "", word = "";
+
+    if (age === null) {
+      cls = "stale"; word = "unknown age";
+    } else if (age > limit) {
+      cls = "stale"; word = "STALE · " + Math.round(age) + " min old";
+    } else if (age > limit * 0.66) {
+      cls = "warn"; word = Math.round(age) + " min old";
+    } else {
+      word = Math.round(age) + " min old";
+    }
+    el.status.className = cls;
+    el.statusText.textContent = "Last updated " + clock + " " + tz + " · " + word;
+
+    var notes = [];
+    if (m.frozen) {
+      notes.push("Frozen: " + (m.frozen_reason || "no current daylight scene."));
+    }
+    if (m.quality && m.quality.suppressed) {
+      notes.push("Forecast withheld — " + (m.quality.reason || "too little of the domain is visible."));
+    } else if (m.quality && m.quality.flow_rejected) {
+      notes.push("Motion estimate rejected as implausible; smoke shown held in place.");
+    }
+    if (m.firms && m.firms.stale) {
+      notes.push("Hotspots are cached, not current.");
+    }
+    if (age !== null && age > limit) {
+      notes.push("This map is older than " + limit + " minutes. Treat it as history, not nowcast.");
+    }
+    el.notice.textContent = notes.join(" ");
+  }
+
+  // ---------------------------------------------------------------- layers
+
+  function clearFrames() {
+    state.frames.forEach(function (f) { map.removeLayer(f.layer); });
+    state.frames = [];
+  }
+
+  function buildFrames(m) {
+    clearFrames();
+    var bounds = m.bounds;
+    var tzOff = m.tz_offset_hours != null ? m.tz_offset_hours : 7;
+
+    function addFrame(file, minutes, label, valid) {
+      if (!file) return;
+      var layer = L.imageOverlay(bust(file), bounds, {
+        opacity: 0,
+        pane: "smokePane",
+        interactive: false,
+        alt: label + " smoke field"
+      }).addTo(map);
+      state.frames.push({ minutes: minutes, layer: layer, label: label, valid: valid });
+    }
+
+    addFrame(m.layers && m.layers.now, 0, "Now", localTime(m.scene_utc, tzOff));
+    ((m.layers && m.layers.forecast) || []).forEach(function (f) {
+      addFrame(f.file, f.minutes, "+" + (f.minutes / 60).toFixed(1).replace(".0", "") + " h",
+               f.valid_local || localTime(f.valid_utc, tzOff));
+    });
+
+    if (state.obscured) { map.removeLayer(state.obscured); state.obscured = null; }
+    if (m.layers && m.layers.obscured) {
+      state.obscured = L.imageOverlay(bust(m.layers.obscured), bounds, {
+        opacity: document.getElementById("tg-obscured").checked ? 1 : 0,
+        pane: "obscPane",
+        interactive: false,
+        alt: "Areas obscured by cloud"
+      }).addTo(map);
+    }
+
+    el.slider.max = String(Math.max(state.frames.length - 1, 0));
+    el.timebar.hidden = state.frames.length < 2;
+    renderTicks();
+    show(0);
+  }
+
+  function renderTicks() {
+    el.ticks.innerHTML = "";
+    state.frames.forEach(function (f, i) {
+      if (i === 0 || i === state.frames.length - 1 || f.minutes % 60 === 0) {
+        var s = document.createElement("span");
+        s.textContent = f.label;
+        el.ticks.appendChild(s);
+      }
+    });
+  }
+
+  function show(i) {
+    if (!state.frames.length) return;
+    state.index = Math.max(0, Math.min(i, state.frames.length - 1));
+    var smokeOn = document.getElementById("tg-smoke").checked;
+    state.frames.forEach(function (f, k) {
+      f.layer.setOpacity(smokeOn && k === state.index ? 1 : 0);
+    });
+    var f = state.frames[state.index];
+    el.slider.value = String(state.index);
+    el.lead.firstChild.nodeValue = f.label === "Now" ? "Now" : "Forecast " + f.label;
+    el.valid.textContent = "valid " + f.valid + " " + (state.meta.tz_label || "WIB");
+  }
+
+  function setPlaying(on) {
+    state.playing = on;
+    el.play.textContent = on ? "❚❚" : "▶";
+    el.play.setAttribute("aria-label", on ? "Pause forecast animation" : "Play forecast animation");
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    if (on) {
+      state.timer = setInterval(function () {
+        show((state.index + 1) % state.frames.length);
+      }, FRAME_MS);
+    }
+  }
+
+  // ---------------------------------------------------------------- hotspots
+
+  function fireRadius(frp) {
+    if (frp == null || isNaN(frp)) return 4;
+    return Math.max(3.5, Math.min(11, 3.5 + Math.sqrt(frp) * 0.8));
+  }
+
+  function loadFires() {
+    return getJSON("firms.geojson").then(function (gj) {
+      state.fires.clearLayers();
+      (gj.features || []).forEach(function (feat) {
+        var p = feat.properties || {};
+        var c = feat.geometry.coordinates;
+        var mk = L.circleMarker([c[1], c[0]], {
+          pane: "firePane",
+          radius: fireRadius(p.frp),
+          color: "#7d1f1f",
+          weight: 1,
+          fillColor: "#d03b3b",
+          fillOpacity: 0.72
+        });
+        mk.bindPopup(
+          "<b>" + (p.satellite || p.source || "hotspot") + "</b><br>" +
+          (p.acq_utc ? p.acq_utc + "<br>" : "") +
+          (p.frp != null ? "FRP " + p.frp + " MW<br>" : "") +
+          "confidence " + (p.confidence || "n/a")
+        );
+        state.fires.addLayer(mk);
+      });
+      if (gj.properties) {
+        state.meta = state.meta || {};
+        state.meta.firms = gj.properties;
+      }
+      return gj;
+    }).catch(function (e) {
+      console.warn("hotspots unavailable", e);
+    });
+  }
+
+  // Wind is a stretch layer: absent unless fetch_gfs ran successfully.
+  function loadWind() {
+    return getJSON("wind.geojson").then(function (gj) {
+      state.wind.clearLayers();
+      (gj.features || []).forEach(function (feat) {
+        var p = feat.properties || {};
+        var c = feat.geometry.coordinates;
+        var heading = ((p.bearing_from_deg || 0) + 180) % 360;  // where it goes
+        var scale = Math.max(0.7, Math.min(1.5, 0.7 + (p.speed_ms || 0) / 14));
+        state.wind.addLayer(
+          L.marker([c[1], c[0]], {
+            interactive: false,
+            keyboard: false,
+            icon: L.divIcon({
+              className: "wind-arrow",
+              html: '<div style="transform:rotate(' + heading.toFixed(0) +
+                    "deg) scale(" + scale.toFixed(2) + ')">↑</div>',
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            })
+          })
+        );
+      });
+      var has = state.wind.getLayers().length > 0;
+      document.getElementById("lb-wind").hidden = !has;
+      document.getElementById("key-wind").hidden = !has;
+      state.windMeta = gj.properties || null;
+    }).catch(function () {
+      document.getElementById("lb-wind").hidden = true;
+      document.getElementById("key-wind").hidden = true;
+    });
+  }
+
+  function loadCities(m) {
+    state.cities.clearLayers();
+    (m.cities || []).forEach(function (c) {
+      state.cities.addLayer(
+        L.marker([c.lat, c.lon], {
+          interactive: false,
+          keyboard: false,
+          icon: L.divIcon({
+            className: "city-label",
+            html: "· " + c.name,
+            iconSize: [90, 14],
+            iconAnchor: [-3, 7]
+          })
+        })
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------- boot
+
+  function applyMeta(m) {
+    state.meta = m;
+    var b = m.bounds;
+    map.setMaxBounds(L.latLngBounds(b).pad(0.35));
+    if (!map._loadedOnce) {
+      map.fitBounds(L.latLngBounds(b));
+      map._loadedOnce = true;
+    }
+    buildFrames(m);
+    loadCities(m);
+    renderStatus();
+  }
+
+  function refresh() {
+    return getJSON("meta.json")
+      .then(function (m) {
+        applyMeta(m);
+        return Promise.all([loadFires(), loadWind()]);
+      })
+      .then(renderStatus)
+      .catch(function (e) {
+        console.error(e);
+        el.status.className = "stale";
+        el.statusText.textContent = "No data published yet";
+        el.notice.textContent =
+          "meta.json could not be loaded. If the pipeline has never run, " +
+          "trigger the workflow manually.";
+      });
+  }
+
+  // ---------------------------------------------------------------- events
+
+  el.slider.addEventListener("input", function () {
+    setPlaying(false);
+    show(parseInt(el.slider.value, 10));
+  });
+  el.play.addEventListener("click", function () { setPlaying(!state.playing); });
+
+  document.getElementById("tg-smoke").addEventListener("change", function () { show(state.index); });
+  document.getElementById("tg-obscured").addEventListener("change", function (e) {
+    if (state.obscured) state.obscured.setOpacity(e.target.checked ? 1 : 0);
+  });
+  document.getElementById("tg-fires").addEventListener("change", function (e) {
+    if (e.target.checked) state.fires.addTo(map); else map.removeLayer(state.fires);
+  });
+  document.getElementById("tg-wind").addEventListener("change", function (e) {
+    if (e.target.checked) state.wind.addTo(map); else map.removeLayer(state.wind);
+  });
+  document.getElementById("tg-labels").addEventListener("change", function (e) {
+    if (e.target.checked) state.cities.addTo(map); else map.removeLayer(state.cities);
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowRight") { setPlaying(false); show(state.index + 1); }
+    if (e.key === "ArrowLeft") { setPlaying(false); show(state.index - 1); }
+    if (e.key === " " && state.frames.length > 1) { e.preventDefault(); setPlaying(!state.playing); }
+  });
+
+  // Small screens hide the legend; let a tap on the title bring it back.
+  document.getElementById("title").addEventListener("click", function () {
+    document.getElementById("legend").classList.toggle("open");
+  });
+
+  state.fires.addTo(map);
+  state.cities.addTo(map);
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+  setInterval(renderStatus, 30000);
+})();
+</script>
+</body>
+</html>

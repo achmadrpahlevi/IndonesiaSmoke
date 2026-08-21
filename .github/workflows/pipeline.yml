@@ -1,0 +1,113 @@
+name: pipeline
+
+on:
+  schedule:
+    # Every 30 minutes. GitHub runs scheduled jobs late under load; the
+    # staleness banner on the site covers the difference.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "UTC slot to process, e.g. 20260821_0600 (blank = latest)"
+        required: false
+        type: string
+      skip_publish:
+        description: "Run the pipeline but do not push to gh-pages"
+        required: false
+        type: boolean
+        default: false
+
+# Never let two runs fight over gh-pages. A late run is not worth a corrupt
+# deploy, so the in-flight one finishes and the newer one waits.
+concurrency:
+  group: kalimsmoke-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Optical flow needs the previous scene. A rolling cache key keeps the
+      # last run's state/ without committing npz files to the repo.
+      - name: Restore pipeline state
+        uses: actions/cache@v4
+        with:
+          path: state
+          key: kalimsmoke-state-${{ github.run_id }}
+          restore-keys: kalimsmoke-state-
+
+      - name: Fetch Himawari-9 scene
+        id: fetch
+        run: |
+          python -m pipeline.fetch_ahi --ensure-pair \
+            ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+
+      - name: Build smoke mask
+        run: python -m pipeline.smoke_mask --all
+
+      - name: Advect forward 0-3 h
+        run: python -m pipeline.advect
+
+      # Hotspots are a secondary layer: it degrades to the cached GeoJSON and
+      # never fails the run (PLAN.md section 6).
+      - name: Fetch FIRMS hotspots
+        env:
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+        run: python -m pipeline.fetch_firms
+
+      - name: Render PNGs and meta.json
+        run: python -m pipeline.publish
+
+      - name: Show what was produced
+        run: |
+          ls -la site/data
+          python -c "import json;m=json.load(open('site/data/meta.json'));print(json.dumps({k:m[k] for k in ('scene_utc','daylight','frozen','quality') if k in m}, indent=2))"
+
+      # Raw HSD is already deleted by fetch_ahi (non-negotiable #4); this is
+      # belt and braces in case a step failed part way through.
+      - name: Drop raw data
+        if: always()
+        run: rm -rf work
+
+      - name: Publish to gh-pages
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_publish }}
+        env:
+          GIT_AUTHOR_NAME: kalimsmoke-bot
+          GIT_AUTHOR_EMAIL: kalimsmoke-bot@users.noreply.github.com
+          GIT_COMMITTER_NAME: kalimsmoke-bot
+          GIT_COMMITTER_EMAIL: kalimsmoke-bot@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          STAMP=$(python -c "import json;print(json.load(open('site/data/meta.json'))['scene_utc'])")
+
+          # Deploy as a single-commit orphan branch: the site is ~2 MB of PNGs
+          # rewritten every 30 minutes, and keeping that history would grow the
+          # repository without bound.
+          rm -rf .deploy
+          mkdir .deploy
+          cp -r site/. .deploy/
+          touch .deploy/.nojekyll
+
+          cd .deploy
+          git init -q -b gh-pages
+          git add -A
+          git commit -q -m "publish $STAMP"
+          git push -q --force \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" \
+            gh-pages
+          echo "pushed $STAMP to gh-pages"
