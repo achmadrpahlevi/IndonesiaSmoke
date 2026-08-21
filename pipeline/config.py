@@ -158,7 +158,28 @@ CLOUD_B03_MIN = 22.0
 CLOUD_B06_MIN = 18.0
 
 # Minimum solar elevation for the visible bands to be usable.
-MIN_SOLAR_ELEVATION_DEG = 12.0
+#
+# 40, not the 12 you would pick from "can the sensor see anything". Measured
+# smoke fraction against sun angle on 2026-08-21, thresholds fixed:
+#
+#     12:00 WIB  77 deg   1.2%      15:00 WIB  40 deg  16.2%
+#     13:00      68       2.5%      15:30      33      26.1%
+#     14:00      54       5.2%      16:00      26      45.1%
+#     14:30      47       8.1%      16:30      18      53.7%
+#
+# Smoke does not grow tenfold in three hours. At 18 deg the slant path is
+# ~3.2 air masses, so thin regional haze that is invisible overhead becomes
+# optically thick and the mask starts painting the whole domain. This is not
+# a units artefact: normalised indices, (a-b)/(a+b), which are invariant to
+# the 1/cos(SZA) correction, drift just as badly, because the change is
+# genuine radiative transfer rather than scaling.
+#
+# So the product is restricted to the range it was calibrated in, roughly
+# 09:30-15:00 WIB, and says so rather than publishing a confident map of
+# haze it cannot distinguish from smoke. Widening this is a research task:
+# it needs an atmospheric correction, or thresholds that are a function of
+# air mass, and neither is in scope. See README, "Known limits".
+MIN_SOLAR_ELEVATION_DEG = 40.0
 
 # satpy hands back raw AHI albedo, which falls as the sun drops. Left
 # uncorrected the smoke field appears to shrink every afternoon — an

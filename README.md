@@ -250,6 +250,41 @@ it does, modestly:
 
 One case is not a validation study, and the plan does not claim one.
 
+## Known limits
+
+**Daylight only, and a narrower day than you might expect: 08:30–15:00 WIB.**
+The mask needs a solar elevation of at least 40°. That is not a sensor limit,
+it is a calibration limit, and it was measured rather than assumed. Holding
+thresholds fixed and sweeping the sun angle on 2026-08-21:
+
+| WIB | sun elev | smoke detected |
+|---|---|---|
+| 12:00 | 77° | 1.2% |
+| 14:00 | 54° | 5.2% |
+| 15:00 | 40° | 16.2% |
+| 16:00 | 26° | 45.1% |
+| 16:30 | 18° | 53.7% |
+
+Smoke does not grow tenfold in three hours. At 18° the slant path is about
+3.2 air masses, so thin regional haze that is invisible overhead turns
+optically thick and the mask paints the whole domain. It is not a scaling
+artefact — normalised indices `(a−b)/(a+b)`, which are invariant to the
+1/cos(SZA) correction, drift just as badly, because this is real radiative
+transfer rather than a units problem.
+
+Widening the window is a research task: it needs a proper atmospheric
+correction, or thresholds expressed as a function of air mass. Out of scope
+here, and the plan says so. The product stays inside the range it was
+calibrated in.
+
+Two consequences worth stating plainly:
+
+- The last useful scene of the day is ~15:00 WIB, so the last forecast reaches
+  ~18:00 WIB. Evenings show that frozen product, labelled.
+- Even inside the window there is drift (1.2% at noon, 5.2% at 14:00). Some of
+  that is real afternoon fire activity; some is the same effect. Resolving it
+  is exactly what the BMKG comparison is for.
+
 ## Guarantees the code keeps
 
 1. **Staleness is visible.** `meta.json` carries `scene_utc`; the page computes

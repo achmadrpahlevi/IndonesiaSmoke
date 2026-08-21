@@ -307,9 +307,18 @@ def test_sun_correction_is_bounded_near_the_terminator():
     assert out[0, 0] == pytest.approx(10.0 / C.MIN_COS_SZA)
 
 
+def test_low_sun_scenes_are_refused_rather_than_guessed_at():
+    """At 16:30 WIB the slant path is ~3 air masses and thin regional haze
+    reads as thick smoke. The mask must decline, not publish 50% coverage."""
+    late = datetime(2026, 8, 21, 9, 30, tzinfo=UTC)  # 16:30 WIB, elev ~18
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), late)
+    assert out["stats"]["smoke_fraction"] == 0.0
+    assert out["stats"]["obscured_fraction"] == 1.0
+
+
 def test_the_same_smoke_is_detected_early_and_late_in_the_day():
-    """The point of the correction: thresholds mean the same thing all day."""
-    afternoon = datetime(2026, 8, 21, 9, 0, tzinfo=UTC)  # 16:00 WIB, low sun
+    """Inside the supported window, thresholds mean the same thing."""
+    afternoon = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB, elev ~54
     raw_scene = synthetic_scene(p=(PATCH, SMOKE_VALUES))
 
     # Dim the whole scene the way a lower sun would.
