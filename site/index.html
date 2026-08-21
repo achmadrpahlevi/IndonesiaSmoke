@@ -199,7 +199,7 @@
   <div class="ramp"></div>
   <div class="ramp-labels"><span>thin</span><span>thick</span></div>
   <div class="key"><span class="swatch obscured"></span> Obscured by cloud</div>
-  <div class="key"><span class="swatch hotspot"></span> Fire hotspot, 24 h</div>
+  <div class="key"><span class="swatch hotspot"></span><span id="fire-key">Fire hotspot, 24 h</span></div>
   <div class="key" id="key-wind" hidden><span class="swatch wind">↑</span> 850 hPa wind</div>
   <div id="layers">
     <label><input type="checkbox" id="tg-smoke" checked> Smoke</label>
@@ -265,6 +265,9 @@
   obscPane.style.zIndex = 420;
   var firePane = map.createPane("firePane");
   firePane.style.zIndex = 440;
+  // A bad fire season puts 5000+ detections in this domain. As SVG that is
+  // 5000 DOM nodes; canvas draws them in one pass.
+  var fireRenderer = L.canvas({ pane: "firePane", padding: 0.3 });
 
   var state = {
     meta: null,
@@ -444,9 +447,21 @@
 
   // ---------------------------------------------------------------- hotspots
 
-  function fireRadius(frp) {
-    if (frp == null || isNaN(frp)) return 4;
-    return Math.max(3.5, Math.min(11, 3.5 + Math.sqrt(frp) * 0.8));
+  // Fixed-radius markers are unreadable at domain zoom: 5000 of them merge
+  // into one blob and hide the smoke field they are meant to explain. Radius
+  // tracks zoom, so density reads as density when zoomed out and individual
+  // fires resolve when zoomed in. FRP still modulates size at every level.
+  function fireRadius(frp, zoom) {
+    var base = 1.4 + 0.9 * Math.max(0, zoom - 5);
+    var mag = 1 + Math.min(1.2, Math.sqrt(Math.max(frp || 0, 0)) / 12);
+    return Math.max(1.1, Math.min(14, base * mag));
+  }
+
+  function rescaleFires() {
+    var z = map.getZoom();
+    state.fires.eachLayer(function (mk) {
+      mk.setRadius(fireRadius(mk.options.frp, z));
+    });
   }
 
   function loadFires() {
@@ -456,12 +471,13 @@
         var p = feat.properties || {};
         var c = feat.geometry.coordinates;
         var mk = L.circleMarker([c[1], c[0]], {
-          pane: "firePane",
-          radius: fireRadius(p.frp),
+          renderer: fireRenderer,
+          frp: p.frp,
+          radius: fireRadius(p.frp, map.getZoom()),
           color: "#7d1f1f",
-          weight: 1,
-          fillColor: "#d03b3b",
-          fillOpacity: 0.72
+          weight: 0.5,
+          fillColor: "#e05252",
+          fillOpacity: 0.5
         });
         mk.bindPopup(
           "<b>" + (p.satellite || p.source || "hotspot") + "</b><br>" +
@@ -475,6 +491,9 @@
         state.meta = state.meta || {};
         state.meta.firms = gj.properties;
       }
+      var n = state.fires.getLayers().length;
+      document.getElementById("fire-key").textContent =
+        n ? "Fire hotspots, 24 h (" + n.toLocaleString() + ")" : "Fire hotspot, 24 h";
       return gj;
     }).catch(function (e) {
       console.warn("hotspots unavailable", e);
@@ -597,6 +616,7 @@
     document.getElementById("legend").classList.toggle("open");
   });
 
+  map.on("zoomend", rescaleFires);
   state.fires.addTo(map);
   state.cities.addTo(map);
   refresh();
