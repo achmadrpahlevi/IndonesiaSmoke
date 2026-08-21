@@ -123,7 +123,16 @@ SMOKE_B03_MINUS_B06_MIN = 6.0
 # Water is unmistakable at 1.6 um: ~2% against ~16% for land. Over water we
 # therefore ignore the SWIR contrast and demand a strong blue signal instead,
 # because smoke scatters blue hard while sediment reflects red.
-WATER_B05_MAX = 5.0
+#
+# The cutoff is 8, not 5, because at 3-4 km the coastline is a band of MIXED
+# land/water pixels — tidal flats, mangrove, estuaries — that land between the
+# two pure classes and carry the sediment signature. At 5 they counted as land
+# and painted the Musi estuary and the Malacca coast as haze. Measured on the
+# 07:00 scene, raising 5 -> 8 removes 75% of the Sumatra coastal artefacts and
+# costs 7% of Kalimantan's detections, most of which are the same artefact on
+# Borneo's own coast. Above ~10 it starts eating real smoke, whose 1.6 um
+# signal comes from the land surface showing through (median 11.8).
+WATER_B05_MAX = 8.0
 WATER_SMOKE_B01_MIN = 20.0
 WATER_SMOKE_B01_MINUS_B03_MIN = 10.0
 

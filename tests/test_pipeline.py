@@ -243,6 +243,20 @@ def test_turbid_coastal_water_is_not_smoke():
     assert not out["smoke_bin"][PATCH].any()
 
 
+def test_mixed_coastal_pixels_are_treated_as_water():
+    """At 3-4 km the coast is a band of part-land part-water pixels: tidal
+    flats, mangrove, estuaries. They sit between the pure classes (B05 ~7)
+    and carry the sediment signature, so they must face the stricter test.
+    Measured on the Musi estuary and Malacca coast, 2026-08-21 07:00."""
+    mixed = {
+        "B01": 18.9, "B03": 11.8, "B05": 7.0, "B06": 4.7,
+        "B11": 296.0, "B13": 299.0, "B14": 298.0,
+    }
+    assert mixed["B05"] < C.WATER_B05_MAX, "must fall on the water side"
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, mixed)), NOON)
+    assert not out["smoke_bin"][PATCH].any()
+
+
 def test_thick_smoke_over_water_is_still_detected():
     """The water rule must not simply blind the map at sea; smoke crossing to
     Singapore travels over the Strait."""

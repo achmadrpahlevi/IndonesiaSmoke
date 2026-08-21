@@ -175,11 +175,60 @@ Three things learned calibrating them, worth not rediscovering:
   domain (medians −1.8 vs −2.5). It is kept only as a permissive cloud-edge
   guard. Tighten it and you are selecting land, not smoke.
 
+### Water, sediment, and the coastline
+
+The single biggest source of false smoke is not cloud — it is water. Turbid
+coastal water and river plumes lift red reflectance while SWIR stays near
+zero, which is exactly the `B03−B06` signature smoke produces. Before this was
+handled, the Malacca Strait read 9.4% smoke against Kalimantan's 8.8%.
+
+`B05` (1.6 µm) separates them cleanly, because water absorbs SWIR and land
+does not:
+
+| surface | B01 | B03 | B05 | B06 |
+|---|---|---|---|---|
+| open ocean | 12.4 | 4.6 | **1.6** | 1.0 |
+| turbid coastal water | 16.7 | 8.5 | **2.4** | 1.3 |
+| mixed coastal pixel | 18.9 | 11.8 | **7.0** | 4.7 |
+| real smoke over land | 26.7 | 16.8 | **16.1** | 7.6 |
+
+Over water (`B05 < WATER_B05_MAX`) the mask ignores the SWIR contrast and
+demands a strong blue signal instead, since smoke scatters blue hard while
+sediment reflects red.
+
+The cutoff is **8, not 5**, because at 3–4 km resolution the coast is a band
+of *mixed* land/water pixels — tidal flats, mangrove, estuaries — that land
+between the pure classes and carry the sediment signature. At 5 they counted
+as land and painted the Musi estuary and the Malacca coast as haze.
+
+Cross-checking against FIRMS (thermal sensors, no physics shared with the AHI
+tests) confirms the fix removed artefacts rather than signal: hotspot/smoke
+enrichment rose from **2.7× to 4.4×** as the false positives came out.
+
+### Absence of smoke is sometimes just absence of fire
+
+Worth knowing before "fixing" a quiet region. On 2026-08-21 the mask found
+essentially no smoke over Sumatra, which looks like under-detection until you
+check the numbers:
+
+| | Sumatra | Kalimantan |
+|---|---|---|
+| FIRMS hotspots ≥20 MW | 88 | 1,025 |
+| near-fire `B03−B06` | 2.69 | 5.67 |
+| background `B03−B06` | 3.41 | 2.69 |
+
+Near Kalimantan's fires the signal is +3.0 above background. Near Sumatra's it
+is *below* background — there is no pall to detect. Before loosening
+thresholds for a region, check whether the radiometric enhancement exists at
+all; if it does not, the mask is right and the region simply is not burning.
+
 The discriminating knobs, in rough order of impact:
 
 | Constant | Raise it to… |
 |---|---|
 | `SMOKE_B03_MINUS_B06_MIN` | cut false smoke over bright ground and thin cloud |
+| `WATER_B05_MAX` | treat more of the coastline as water, killing sediment false alarms (costs real smoke above ~10) |
+| `WATER_SMOKE_B01_MIN` | require thicker smoke before believing it at sea |
 | `SMOKE_B01_MIN` | ignore faint haze |
 | `CLOUD_B13_MAX_K`, `CLOUD_B06_MIN` | mark more as obscured, forecast less |
 | `SMOKE_MIN_BLOB_CELLS` | drop more speckle |

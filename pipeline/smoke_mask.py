@@ -76,8 +76,10 @@ def classify(grids: dict, slot: datetime) -> dict:
         & np.isfinite(b14)
     )
 
-    # Water absorbs 1.6 um almost completely, land does not. This is the
-    # cleanest split in the whole scene: ~2% against ~16%.
+    # Water absorbs 1.6 um almost completely, land does not: ~2% against ~16%.
+    # The cutoff sits well above pure water so that mixed coastal pixels —
+    # tidal flats, estuaries, mangrove — fall on the water side and face the
+    # stricter test, rather than passing as land with a sediment signature.
     water = valid & (b05 < C.WATER_B05_MAX)
 
     daylit = elev >= C.MIN_SOLAR_ELEVATION_DEG
