@@ -237,15 +237,16 @@ FIRMS_MODIS_MIN_CONFIDENCE = 30
 # the map is. Measured on the same 5261 detections:
 #     >=  0 MW   5261 points, 100% of radiative power
 #     >= 10 MW   2223 points,  79%
-#     >= 20 MW   1026 points,  58%   <- default
-#     >= 50 MW    267 points,  30%
+#     >= 20 MW   1026 points,  58%
+#     >= 30 MW    657 points,  45%
+#     >= 50 MW    302 points,  30%   <- default
 #
 # CAVEAT, and it bites this product specifically: Kalimantan's worst haze
 # comes from SMOULDERING PEAT, which burns cool and registers low FRP.
 # Raising this floor preferentially discards the fires that generate the most
 # smoke per unit of heat. It is a readability control, not a relevance one.
 # Set to 0 to publish every detection.
-FIRMS_MIN_FRP_MW = 20.0
+FIRMS_MIN_FRP_MW = 50.0
 FIRMS_HTTP_TIMEOUT = 60
 FIRMS_MAP_KEY_ENV = "FIRMS_MAP_KEY"
 
