@@ -614,6 +614,61 @@ def test_firms_area_string_is_west_south_east_north():
 
 
 # --------------------------------------------------------------------------
+# Choosing what to publish
+# --------------------------------------------------------------------------
+
+def test_publish_skips_a_night_mask_in_favour_of_the_last_daylight_one(
+    tmp_path, monkeypatch
+):
+    """A night frame is newer than every daylight frame of the day it ends.
+    Selecting by time alone means the map goes dark at dusk and stays dark."""
+    from pipeline import publish
+
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    day = NOON
+    night = NOON + timedelta(hours=8)
+
+    def write(slot, daylit):
+        ny, nx = 4, 4
+        np.savez_compressed(
+            common.mask_path(slot),
+            slot=common.slot_id(slot),
+            smoke=np.zeros((ny, nx), np.float32),
+            smoke_bin=np.zeros((ny, nx), np.uint8),
+            obscured=np.zeros((ny, nx), np.uint8),
+            clear=np.ones((ny, nx), np.uint8),
+            stats=np.array([{"daylit_fraction": daylit}], dtype=object),
+        )
+
+    write(day, daylit=1.0)
+    write(night, daylit=0.0)
+    masks = common.list_state("mask")
+    assert masks[-1][0] == night, "night really is the newest by time"
+
+    slot, _, _ = publish.newest_daylight_mask(masks)
+    assert slot == day
+
+
+def test_publish_reports_nothing_when_no_mask_ever_saw_daylight(
+    tmp_path, monkeypatch
+):
+    from pipeline import publish
+
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    ny, nx = 4, 4
+    np.savez_compressed(
+        common.mask_path(NOON),
+        slot=common.slot_id(NOON),
+        smoke=np.zeros((ny, nx), np.float32),
+        smoke_bin=np.zeros((ny, nx), np.uint8),
+        obscured=np.ones((ny, nx), np.uint8),
+        clear=np.zeros((ny, nx), np.uint8),
+        stats=np.array([{"daylit_fraction": 0.0}], dtype=object),
+    )
+    assert publish.newest_daylight_mask(common.list_state("mask"))[0] is None
+
+
+# --------------------------------------------------------------------------
 # Rendering
 # --------------------------------------------------------------------------
 

@@ -164,23 +164,50 @@ def freeze_existing(outdir: Path, scene_slot, reason: str) -> int:
 # Orchestration
 # --------------------------------------------------------------------------
 
+def newest_daylight_mask(masks):
+    """The most recent mask that actually saw something.
+
+    Not simply the most recent mask. A night frame is newer than every
+    daylight frame of the day it ends, so picking by time alone means the
+    product goes dark at dusk and stays dark — and any backfill of an earlier
+    daylight scene is silently discarded in favour of the darkness.
+    """
+    for slot, path in reversed(masks):
+        mask = load_mask_npz(path)
+        if float(mask["stats"].get("daylit_fraction", 0.0)) >= C.DAYLIGHT_MIN_FRACTION:
+            return slot, path, mask
+    return None, None, None
+
+
 def publish(outdir: Path) -> int:
     masks = common.list_state("mask")
     if not masks:
         log.error("no masks in %s — run smoke_mask first", C.STATE_DIR)
         return 1
-    scene_slot, mask_file = masks[-1]
-    mask = load_mask_npz(mask_file)
 
-    usable, mean_elev = common.domain_is_daylit(scene_slot)
-    daylit_fraction = float(mask["stats"]["daylit_fraction"])
-    if not usable or daylit_fraction < C.DAYLIGHT_MIN_FRACTION:
+    scene_slot, mask_file, mask = newest_daylight_mask(masks)
+    if scene_slot is None:
+        newest_slot = masks[-1][0]
+        _, mean_elev = common.domain_is_daylit(newest_slot)
         return freeze_existing(
             outdir,
-            scene_slot,
-            f"night over the domain (mean solar elevation {mean_elev:.0f} deg); "
-            "showing the last daylight product",
+            newest_slot,
+            f"night over the domain (mean solar elevation {mean_elev:.0f} deg) "
+            "and no daylight scene held in state",
         )
+
+    # Render the last daylight product rather than assuming one is already
+    # published: at dusk, and on a cold cache, there may be nothing up yet.
+    lit_now, mean_elev = common.domain_is_daylit(common.utcnow())
+    is_current = scene_slot == masks[-1][0] and lit_now
+    frozen_reason = ""
+    if not is_current:
+        frozen_reason = (
+            f"night over the domain (mean solar elevation {mean_elev:.0f} deg); "
+            f"showing the last daylight scene, {common.to_display_tz(scene_slot):%H:%M} "
+            f"{C.DISPLAY_TZ_LABEL}"
+        )
+        log.warning("publishing frozen: %s", frozen_reason)
 
     fc = None
     fc_files = common.list_state("forecast")
@@ -217,6 +244,10 @@ def publish(outdir: Path) -> int:
 
     firms = common.read_json(outdir / "firms.geojson") or {}
     meta = build_meta(scene_slot, mask, fc, layers, firms.get("properties"))
+    meta["daylight"] = bool(is_current)
+    meta["frozen"] = not is_current
+    if frozen_reason:
+        meta["frozen_reason"] = frozen_reason
     common.write_json(outdir / "meta.json", meta)
 
     log.info(
