@@ -9,6 +9,7 @@ the mask rules, and the direction things move in.
 """
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -601,6 +602,43 @@ def test_unmeasured_fires_are_kept_not_treated_as_zero(monkeypatch):
 def test_zero_floor_disables_the_power_filter(monkeypatch):
     monkeypatch.setattr(C, "FIRMS_MIN_FRP_MW", 0.0)
     assert fetch_firms.frp_ok({"frp": "0.1"})
+
+
+def test_last_good_hotspots_survive_a_failed_fetch(tmp_path, monkeypatch):
+    """On a runner site/data is empty every run, so the fallback has to live
+    in state/ or the degradation path can never actually fire."""
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(C, "SITE_DATA_DIR", tmp_path / "out")
+    fetch_firms.log = common.setup_logging(False)
+
+    feature = fetch_firms.row_to_feature(
+        {"longitude": "114.0", "latitude": "-2.0", "frp": "80", "confidence": "n"},
+        "VIIRS_SNPP_NRT",
+    )
+    fetch_firms.write_geojson([feature], ["VIIRS_SNPP_NRT"], stale=False, note="")
+    assert fetch_firms.cache_path().exists()
+
+    # Simulate the next run: fresh output dir, FIRMS unreachable.
+    import shutil
+
+    shutil.rmtree(C.SITE_DATA_DIR)
+    assert fetch_firms.degrade("network unreachable") == 0
+
+    out = common.read_json(Path(C.SITE_DATA_DIR) / fetch_firms.OUT_NAME)
+    assert len(out["features"]) == 1, "should have fallen back, not published empty"
+    assert out["properties"]["stale"] is True
+
+
+def test_a_failed_fetch_with_no_cache_publishes_an_empty_flagged_layer(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(C, "SITE_DATA_DIR", tmp_path / "out")
+    fetch_firms.log = common.setup_logging(False)
+    assert fetch_firms.degrade("no key") == 0
+    out = common.read_json(Path(C.SITE_DATA_DIR) / fetch_firms.OUT_NAME)
+    assert out["features"] == []
+    assert out["properties"]["stale"] is True
 
 
 def test_firms_area_string_is_west_south_east_north():

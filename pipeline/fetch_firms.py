@@ -30,6 +30,16 @@ log = None
 
 OUT_NAME = "firms.geojson"
 
+# The last good layer is cached in state/, not in site/data/. On a CI runner
+# site/data/ is empty at the start of every run — it is gitignored and rebuilt
+# from scratch — so a fallback that reads the published output can never fire
+# there. state/ is the directory that actually survives between runs.
+CACHE_NAME = "firms_last_good.geojson"
+
+
+def cache_path() -> Path:
+    return Path(C.STATE_DIR) / CACHE_NAME
+
 
 def map_key() -> str | None:
     key = os.environ.get(C.FIRMS_MAP_KEY_ENV, "").strip()
@@ -195,6 +205,8 @@ def write_geojson(
         "features": features,
     }
     common.write_json(out, payload)
+    if features and not stale:
+        common.write_json(cache_path(), payload)
     log.info("wrote %s: %d hotspots%s", out, len(features), " (STALE)" if stale else "")
     return out
 
@@ -202,8 +214,9 @@ def write_geojson(
 def degrade(reason: str) -> int:
     """Keep the last good layer rather than publishing an empty one."""
     out = Path(C.SITE_DATA_DIR) / OUT_NAME
-    existing = common.read_json(out)
-    if existing and existing.get("features") is not None:
+    # Prefer whatever is already published this run, then the cross-run cache.
+    existing = common.read_json(out) or common.read_json(cache_path())
+    if existing and existing.get("features"):
         props = existing.setdefault("properties", {})
         props["stale"] = True
         props["note"] = reason
