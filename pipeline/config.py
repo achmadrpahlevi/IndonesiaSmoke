@@ -27,7 +27,12 @@ SITE_DATA_DIR = Path(os.environ.get("KALIMSMOKE_OUT", REPO_ROOT / "site" / "data
 # Domain grid — fixed plate carree, ~2 km
 # --------------------------------------------------------------------------
 
-LON_MIN, LON_MAX = 108.0, 120.0
+# Extends west to 100 E so the domain covers Singapore, Peninsular Malaysia
+# and the Riau/Sumatra fire belt — the question "does the haze reach
+# Singapore" cannot be answered by a grid that stops at Borneo. This costs no
+# extra download: AHI segments divide the disk by scan line (latitude), so a
+# wider longitude range is a bigger crop of files we already fetch.
+LON_MIN, LON_MAX = 100.0, 120.0
 LAT_MIN, LAT_MAX = -5.0, 8.0
 GRID_RES_DEG = 0.02  # ~2.2 km at the equator
 
@@ -35,8 +40,11 @@ GRID_RES_DEG = 0.02  # ~2.2 km at the equator
 GRID_NX = int(round((LON_MAX - LON_MIN) / GRID_RES_DEG))  # 600
 GRID_NY = int(round((LAT_MAX - LAT_MIN) / GRID_RES_DEG))  # 650
 
-# Nearest-neighbour radius for resampling AHI -> grid, metres.
-RESAMPLE_RADIUS_M = 3000
+# Nearest-neighbour radius for resampling AHI -> grid, metres. The western
+# edge is ~40 degrees off the sub-satellite point, where a 2 km nadir pixel
+# is stretched to 3-4 km, so the radius has to exceed the nadir spacing or
+# that edge comes back full of holes.
+RESAMPLE_RADIUS_M = 5000
 
 # --------------------------------------------------------------------------
 # Himawari-9 source
@@ -101,6 +109,23 @@ SMOKE_B01_MINUS_B03_MIN = 6.0
 #     >= 6  the coherent pall, this default           (~ 8%)
 #     >= 7  the densest core only                     (~ 5%)
 SMOKE_B03_MINUS_B06_MIN = 6.0
+
+# Over water the B03-B06 test above is unsafe. Sediment-laden coastal water
+# and river plumes lift red reflectance while SWIR stays near zero, which is
+# the same signature smoke produces, so the Sumatra and Kalimantan coasts get
+# painted as haze. Measured over the 2026-08-21 05:00 scene:
+#
+#   region                       B01   B03   B05   B06
+#   Riau coastal sediment       16.7   8.5   2.4   1.3   <- was flagged smoke
+#   real Kalimantan smoke       26.7  16.8  16.1   7.6
+#   open ocean                  12.4   4.6   1.6   1.0
+#
+# Water is unmistakable at 1.6 um: ~2% against ~16% for land. Over water we
+# therefore ignore the SWIR contrast and demand a strong blue signal instead,
+# because smoke scatters blue hard while sediment reflects red.
+WATER_B05_MAX = 5.0
+WATER_SMOKE_B01_MIN = 20.0
+WATER_SMOKE_B01_MINUS_B03_MIN = 10.0
 
 # Reflectance excess at which the overlay reaches full opacity.
 SMOKE_DENSITY_SPAN = 8.0
@@ -254,15 +279,30 @@ OBSCURED_HATCH_WIDTH = 2
 # daylight product is frozen and labelled rather than overwritten.
 DAYLIGHT_MIN_FRACTION = 0.25
 
+# Where the map opens. Widening the domain west to Singapore would otherwise
+# shove Borneo off to the right, so the initial view is centred on Kalimantan
+# and extended east by however much was added in the west. The result keeps
+# Kalimantan in the middle with Singapore and Malaysia visible on the left.
+FOCUS_LON = 114.0
+FOCUS_LAT = 0.5
+
 # Indonesian western time, for the header.
 DISPLAY_TZ_OFFSET_HOURS = 7
 DISPLAY_TZ_LABEL = "WIB"
 
 # Cities called out in the site legend (stretch: per-city ETA).
 CITIES = [
+    # Kalimantan
     {"name": "Pontianak", "lat": -0.02, "lon": 109.34},
     {"name": "Palangkaraya", "lat": -2.21, "lon": 113.92},
     {"name": "Banjarmasin", "lat": -3.32, "lon": 114.59},
     {"name": "Samarinda", "lat": -0.50, "lon": 117.15},
     {"name": "Balikpapan", "lat": -1.24, "lon": 116.85},
+    {"name": "Kuching", "lat": 1.55, "lon": 110.34},
+    # Downwind, and the reason the domain reaches this far west
+    {"name": "Singapore", "lat": 1.35, "lon": 103.82},
+    {"name": "Kuala Lumpur", "lat": 3.14, "lon": 101.69},
+    {"name": "Johor Bahru", "lat": 1.49, "lon": 103.74},
+    {"name": "Malacca", "lat": 2.19, "lon": 102.25},
+    {"name": "Pekanbaru", "lat": 0.51, "lon": 101.45},
 ]

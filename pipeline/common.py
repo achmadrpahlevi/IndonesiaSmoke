@@ -79,6 +79,21 @@ def leaflet_bounds() -> list[list[float]]:
     return [[C.LAT_MIN, C.LON_MIN], [C.LAT_MAX, C.LON_MAX]]
 
 
+def view_bounds() -> list[list[float]]:
+    """Opening view: the data bounds mirrored about the focus point.
+
+    Fitting the raw data bounds would centre the map on the middle of the
+    grid, which after the westward extension is the Java Sea. Mirroring about
+    Kalimantan keeps the subject centred while still showing everything to
+    its west.
+    """
+    west = min(C.LON_MIN, 2 * C.FOCUS_LON - C.LON_MAX)
+    east = max(C.LON_MAX, 2 * C.FOCUS_LON - C.LON_MIN)
+    south = min(C.LAT_MIN, 2 * C.FOCUS_LAT - C.LAT_MAX)
+    north = max(C.LAT_MAX, 2 * C.FOCUS_LAT - C.LAT_MIN)
+    return [[south, west], [north, east]]
+
+
 # --------------------------------------------------------------------------
 # Time
 # --------------------------------------------------------------------------

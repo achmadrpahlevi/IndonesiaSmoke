@@ -18,7 +18,7 @@ Not a research product. No novelty claims, no validation study. See
 ```
 every 30 min (GitHub Actions)
   fetch_ahi    latest Himawari-9 FLDK scene from the public noaa-himawari9
-               bucket → only the band/segment files touching 108–120°E,
+               bucket → only the band/segment files touching 100–120°E,
                5°S–8°N → satpy → fixed 0.02° plate carrée grid → state/*.npz
   smoke_mask   B01/B03 reflectance + B03−B06 SWIR contrast + B11−B14
                split-window → smoke density, cloud "obscured", clear
@@ -31,6 +31,27 @@ every 30 min (GitHub Actions)
 
 The Leaflet page reads `meta.json` and swaps image overlays as you move the
 time slider.
+
+### Domain
+
+100–120°E, 5°S–8°N, on a fixed 0.02° (~2.2 km) grid — 1000 × 650 cells.
+
+It reaches west to Singapore, Peninsular Malaysia and the Riau fire belt on
+purpose: transboundary haze is the question people actually ask, and a grid
+that stops at Borneo cannot answer it. The extra width is close to free,
+because AHI splits the disk into segments by scan line, so a wider longitude
+range is a bigger crop of files already being downloaded — same 28 files,
+same ~240 MB.
+
+The map opens centred on Kalimantan (`FOCUS_LON`/`FOCUS_LAT` in `config.py`)
+rather than on the middle of the grid, which after the westward extension is
+the Java Sea. `common.view_bounds()` mirrors the data bounds about that focus
+so the subject stays centred with Singapore and Malaysia visible to its west.
+
+Caveat on the western edge: at 100°E the satellite viewing zenith angle is
+roughly 50–55°, so pixels are stretched to 3–4 km and the atmospheric path is
+longer than over Borneo. Mask thresholds were tuned over Borneo; treat smoke
+detections near the far west as less reliable than those over Kalimantan.
 
 ### Why these choices
 

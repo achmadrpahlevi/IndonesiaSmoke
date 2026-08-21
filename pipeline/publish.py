@@ -110,6 +110,8 @@ def build_meta(scene_slot, mask, fc, layers, firms_props) -> dict:
         "daylight": True,
         "frozen": False,
         "bounds": common.leaflet_bounds(),
+        "view_bounds": common.view_bounds(),
+        "focus": [C.FOCUS_LAT, C.FOCUS_LON],
         "grid": {
             "nx": C.GRID_NX,
             "ny": C.GRID_NY,
@@ -142,6 +144,8 @@ def freeze_existing(outdir: Path, scene_slot, reason: str) -> int:
             "tz_offset_hours": C.DISPLAY_TZ_OFFSET_HOURS,
             "stale_after_minutes": C.STALE_MINUTES,
             "bounds": common.leaflet_bounds(),
+            "view_bounds": common.view_bounds(),
+            "focus": [C.FOCUS_LAT, C.FOCUS_LON],
             "caption": C.CAPTION,
             "layers": {"now": None, "obscured": None, "forecast": []},
             "cities": C.CITIES,

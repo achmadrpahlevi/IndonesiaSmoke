@@ -45,6 +45,33 @@ def test_rows_run_north_to_south():
     assert lats[0] > lats[-1]
 
 
+def test_domain_reaches_singapore_and_peninsular_malaysia():
+    """The product claims to answer 'does the haze reach Singapore'. It can
+    only do that if Singapore is inside the grid."""
+    for name, lat, lon in [
+        ("Singapore", 1.35, 103.82),
+        ("Kuala Lumpur", 3.14, 101.69),
+        ("Pontianak", -0.02, 109.34),
+        ("Palangkaraya", -2.21, 113.92),
+    ]:
+        assert C.LON_MIN <= lon <= C.LON_MAX, name
+        assert C.LAT_MIN <= lat <= C.LAT_MAX, name
+
+
+def test_opening_view_is_centred_on_kalimantan():
+    (south, west), (north, east) = common.view_bounds()
+    assert (west + east) / 2 == pytest.approx(C.FOCUS_LON)
+    assert (south + north) / 2 == pytest.approx(C.FOCUS_LAT)
+
+
+def test_opening_view_still_contains_all_the_data():
+    """Centring must never crop the grid out of frame."""
+    (vs, vw), (vn, ve) = common.view_bounds()
+    (ds, dw), (dn, de) = common.leaflet_bounds()
+    assert vw <= dw and ve >= de
+    assert vs <= ds and vn >= dn
+
+
 def test_leaflet_bounds_are_south_west_then_north_east():
     (s, w), (n, e) = common.leaflet_bounds()
     assert s < n and w < e
@@ -191,6 +218,59 @@ def test_bright_bare_ground_is_not_smoke():
     out = smoke_mask.classify(synthetic_scene(p=(PATCH, soil)), NOON)
     assert not out["obscured"][PATCH].any(), "should not be screened out as cloud"
     assert not out["smoke_bin"][PATCH].any()
+
+
+# --------------------------------------------------------------------------
+# Water. Sediment plumes fake the smoke signature, and the domain now reaches
+# the Malacca Strait, where getting this wrong would answer "does the haze
+# reach Singapore" with somebody's river outflow.
+# --------------------------------------------------------------------------
+
+SEDIMENT_WATER = {
+    "B01": 17.0, "B03": 8.5, "B05": 2.4, "B06": 1.3,
+    "B11": 298.0, "B13": 300.0, "B14": 300.0,
+}
+SMOKE_OVER_WATER = {
+    "B01": 30.0, "B03": 16.0, "B05": 2.5, "B06": 1.5,
+    "B11": 296.0, "B13": 299.0, "B14": 298.0,
+}
+
+
+def test_turbid_coastal_water_is_not_smoke():
+    """Sediment lifts red while SWIR stays near zero — the same B03-B06 that
+    smoke produces. Measured values from the Riau coast, 2026-08-21."""
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SEDIMENT_WATER)), NOON)
+    assert not out["smoke_bin"][PATCH].any()
+
+
+def test_thick_smoke_over_water_is_still_detected():
+    """The water rule must not simply blind the map at sea; smoke crossing to
+    Singapore travels over the Strait."""
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_OVER_WATER)), NOON)
+    assert out["smoke_bin"][PATCH].all()
+
+
+def test_water_is_identified_by_the_16um_band():
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SEDIMENT_WATER)), NOON)
+    # The synthetic background is land-like (B05 = 14), the patch is water.
+    expected = (PATCH[0].stop - PATCH[0].start) * (PATCH[1].stop - PATCH[1].start)
+    assert out["stats"]["water_fraction"] * C.GRID_NY * C.GRID_NX == pytest.approx(
+        expected, rel=0.01
+    )
+
+
+def test_land_smoke_rules_still_apply_off_water():
+    """Modest smoke over land must survive. It would fail the stricter water
+    test, so the fix must not be applied everywhere."""
+    land_smoke = {
+        "B01": 18.0, "B03": 11.0, "B05": 16.0, "B06": 4.0,
+        "B11": 293.0, "B13": 296.0, "B14": 295.0,
+    }
+    # Too faint for the at-sea rule on both counts.
+    assert land_smoke["B01"] < C.WATER_SMOKE_B01_MIN
+    assert land_smoke["B01"] - land_smoke["B03"] < C.WATER_SMOKE_B01_MINUS_B03_MIN
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, land_smoke)), NOON)
+    assert out["smoke_bin"][PATCH].all()
 
 
 # --------------------------------------------------------------------------
@@ -469,7 +549,13 @@ def test_zero_floor_disables_the_power_filter(monkeypatch):
 
 
 def test_firms_area_string_is_west_south_east_north():
-    assert fetch_firms.area_string() == "108.0,-5.0,120.0,8.0"
+    """Order matters and is easy to transpose. Derived from config so that
+    legitimately moving the domain does not fail the test."""
+    assert fetch_firms.area_string() == "{},{},{},{}".format(
+        C.LON_MIN, C.LAT_MIN, C.LON_MAX, C.LAT_MAX
+    )
+    west, south, east, north = (float(v) for v in fetch_firms.area_string().split(","))
+    assert west < east and south < north
 
 
 # --------------------------------------------------------------------------

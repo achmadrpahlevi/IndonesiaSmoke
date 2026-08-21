@@ -60,8 +60,8 @@ def classify(grids: dict, slot: datetime) -> dict:
     lon2d, lat2d = common.grid_mesh()
     elev = common.solar_elevation(slot, lat2d, lon2d)
 
-    b01, b03, b06 = (
-        sunz_correct(grids[b], elev) for b in ("B01", "B03", "B06")
+    b01, b03, b05, b06 = (
+        sunz_correct(grids[b], elev) for b in ("B01", "B03", "B05", "B06")
     )
     b11 = grids["B11"].astype(np.float32)
     b13 = grids["B13"].astype(np.float32)
@@ -70,10 +70,15 @@ def classify(grids: dict, slot: datetime) -> dict:
     valid = (
         np.isfinite(b01)
         & np.isfinite(b03)
+        & np.isfinite(b05)
         & np.isfinite(b06)
         & np.isfinite(b13)
         & np.isfinite(b14)
     )
+
+    # Water absorbs 1.6 um almost completely, land does not. This is the
+    # cleanest split in the whole scene: ~2% against ~16%.
+    water = valid & (b05 < C.WATER_B05_MAX)
 
     daylit = elev >= C.MIN_SOLAR_ELEVATION_DEG
 
@@ -95,17 +100,23 @@ def classify(grids: dict, slot: datetime) -> dict:
         vis_swir = b03 - b06  # the smoke discriminator
         btd = b11 - b14
 
-    smoke_bin = (
-        valid
-        & daylit
-        & ~cloud
-        & (b01 >= C.SMOKE_B01_MIN)
+    usable = valid & daylit & ~cloud & (b13 >= C.SMOKE_B13_MIN_K) & (btd >= C.SMOKE_BTD_1114_MIN)
+
+    over_land = (
+        (b01 >= C.SMOKE_B01_MIN)
         & (b01 <= C.SMOKE_B01_MAX)
         & (blue_excess >= C.SMOKE_B01_MINUS_B03_MIN)
         & (vis_swir >= C.SMOKE_B03_MINUS_B06_MIN)
-        & (b13 >= C.SMOKE_B13_MIN_K)
-        & (btd >= C.SMOKE_BTD_1114_MIN)
     )
+
+    # Sediment fakes the SWIR contrast, so over water lean on blue instead.
+    over_water = (
+        (b01 >= C.WATER_SMOKE_B01_MIN)
+        & (b01 <= C.SMOKE_B01_MAX)
+        & (blue_excess >= C.WATER_SMOKE_B01_MINUS_B03_MIN)
+    )
+
+    smoke_bin = usable & np.where(water, over_water, over_land)
 
     smoke_bin = remove_small_blobs(smoke_bin, C.SMOKE_MIN_BLOB_CELLS)
 
@@ -116,6 +127,7 @@ def classify(grids: dict, slot: datetime) -> dict:
 
     n = float(smoke_bin.size)
     stats = {
+        "water_fraction": float(water.sum() / n),
         "valid_fraction": float(valid.sum() / n),
         "daylit_fraction": float(daylit.sum() / n),
         "cloud_fraction": float(cloud.sum() / n),

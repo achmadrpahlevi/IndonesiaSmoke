@@ -569,9 +569,15 @@
   function applyMeta(m) {
     state.meta = m;
     var b = m.bounds;
-    map.setMaxBounds(L.latLngBounds(b).pad(0.35));
+    map.setMaxBounds(L.latLngBounds(m.view_bounds || b).pad(0.25));
     if (!map._loadedOnce) {
-      map.fitBounds(L.latLngBounds(b));
+      // Wide screens open on the Kalimantan-centred view, which keeps the
+      // subject in the middle and still shows Singapore and Malaysia. On a
+      // phone that would shrink everything to fit a much wider box, so there
+      // we fit the data itself and let the user pan.
+      var wide = window.innerWidth >= 700;
+      var target = (wide && m.view_bounds) ? m.view_bounds : b;
+      map.fitBounds(L.latLngBounds(target), { padding: [4, 4] });
       map._loadedOnce = true;
     }
     buildFrames(m);
