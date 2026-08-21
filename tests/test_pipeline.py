@@ -480,6 +480,27 @@ def write_mask(slot, clear_fraction, smoke=None):
     )
 
 
+def test_pruning_drops_darkness_before_it_evicts_daylight(tmp_path, monkeypatch):
+    """A night slot is newer than every daylight slot of the same day, so a
+    plain newest-N window fills with darkness and deletes the flow partner a
+    backfill just downloaded."""
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    day_a = common.parse_slot_id("20260821_0730")   # 14:30 WIB
+    day_b = common.parse_slot_id("20260821_0800")   # 15:00 WIB
+    nights = [common.parse_slot_id(t) for t in
+              ("20260821_1900", "20260821_1930", "20260821_2000", "20260821_2030")]
+    for slot in [day_a, day_b] + nights:
+        common.scene_path(slot).parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(common.scene_path(slot), slot=common.slot_id(slot),
+                            bands=np.array(["B01"], dtype=object),
+                            B01=np.zeros((2, 2), np.float32))
+
+    common.prune_state("scene", keep=4)
+    left = [s for s, _ in common.list_state("scene")]
+    assert day_a in left and day_b in left, "daylight partner must survive"
+    assert not any(n in left for n in nights), "darkness is never useful"
+
+
 def test_a_blind_night_mask_is_never_used_for_flow(tmp_path, monkeypatch):
     """At dawn the newest masks are last night's. Pairing one against the
     first daylight frame makes Farneback match darkness to a lit scene."""

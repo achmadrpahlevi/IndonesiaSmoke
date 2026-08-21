@@ -254,9 +254,27 @@ def list_state(prefix: str) -> list[tuple[datetime, Path]]:
     return out
 
 
-def prune_state(prefix: str, keep: int = 8) -> None:
-    """State is a rolling window; advection only ever needs the last two."""
+def prune_state(prefix: str, keep: int = 8, drop_dark: bool = True) -> None:
+    """State is a rolling window; advection only ever needs the last two.
+
+    Dark slots are dropped first, before the newest-N rule is applied. A scene
+    from last night is newer than every daylight scene of the day, so a plain
+    newest-N window fills up with darkness and evicts the very partner a
+    backfill just downloaded — which is how a freshly fetched flow partner
+    ended up deleted seconds after arriving.
+    """
     entries = list_state(prefix)
+    if drop_dark:
+        keepable = []
+        for slot, path in entries:
+            if domain_is_daylit(slot)[0]:
+                keepable.append((slot, path))
+            else:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        entries = keepable
     for _, path in entries[:-keep] if len(entries) > keep else []:
         try:
             path.unlink()
