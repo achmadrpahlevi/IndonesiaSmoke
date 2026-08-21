@@ -174,12 +174,29 @@ CLOUD_B06_MIN = 18.0
 # the 1/cos(SZA) correction, drift just as badly, because the change is
 # genuine radiative transfer rather than scaling.
 #
-# So the product is restricted to the range it was calibrated in, roughly
-# 09:30-15:00 WIB, and says so rather than publishing a confident map of
-# haze it cannot distinguish from smoke. Widening this is a research task:
-# it needs an atmospheric correction, or thresholds that are a function of
-# air mass, and neither is in scope. See README, "Known limits".
-MIN_SOLAR_ELEVATION_DEG = 40.0
+# TWO different questions, which must not share a threshold.
+#
+# 1. Can the sensor see THIS PIXEL at all? Below ~12 deg the visible bands are
+#    useless, so the pixel is marked obscured and hatched. This is per pixel
+#    and it is what draws the grey areas on the map.
+MIN_SOLAR_ELEVATION_DEG = 12.0
+
+# 2. Is THIS SCENE inside the range the thresholds were calibrated in? This is
+#    per scene, and a scene that fails is not published at all — the last good
+#    one stays up, frozen and labelled.
+#
+#    50 deg ends the day at 14:00 WIB. Conflating the two numbers was a
+#    mistake: raising the per-pixel floor to 50 hatched a third of the 14:00
+#    scene, which is a worse map, while a 40 deg version hatched half the
+#    domain and still read 3x the noon smoke fraction on what was left.
+#
+#    14:00 WIB / ~54 deg is also the only point ever cross-checked against an
+#    independent sensor — hotspot/smoke enrichment of 4.4x against FIRMS — so
+#    the product stays inside the range that check covers.
+#
+#    Widening this is a research task: it needs atmospheric correction, or
+#    thresholds expressed as a function of air mass. See README "Known limits".
+MIN_SCENE_ELEVATION_DEG = 50.0
 
 # satpy hands back raw AHI albedo, which falls as the sun drops. Left
 # uncorrected the smoke field appears to shrink every afternoon — an

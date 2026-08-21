@@ -252,8 +252,8 @@ One case is not a validation study, and the plan does not claim one.
 
 ## Known limits
 
-**Daylight only, and a narrower day than you might expect: 08:30–15:00 WIB.**
-The mask needs a solar elevation of at least 40°. That is not a sensor limit,
+**Daylight only, and a narrower day than you might expect: 09:30–14:00 WIB.**
+The mask needs a solar elevation of at least 50°. That is not a sensor limit,
 it is a calibration limit, and it was measured rather than assumed. Holding
 thresholds fixed and sweeping the sun angle on 2026-08-21:
 
@@ -277,10 +277,15 @@ correction, or thresholds expressed as a function of air mass. Out of scope
 here, and the plan says so. The product stays inside the range it was
 calibrated in.
 
+A 40° floor was tried first, stretching the day to 15:00 WIB, and rejected on
+sight: by then the sun is under 40° across the eastern half of the domain, so
+that half came back hatched as unusable while the rest still read three times
+the noon smoke fraction. Half a map of haze is not better than no map.
+
 Two consequences worth stating plainly:
 
-- The last useful scene of the day is ~15:00 WIB, so the last forecast reaches
-  ~18:00 WIB. Evenings show that frozen product, labelled.
+- The last useful scene of the day is 14:00 WIB, so the last forecast reaches
+  17:00 WIB. Afternoons and evenings show that frozen product, labelled.
 - Even inside the window there is drift (1.2% at noon, 5.2% at 14:00). Some of
   that is real afternoon fire activity; some is the same effect. Resolving it
   is exactly what the BMKG comparison is for.

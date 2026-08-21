@@ -185,12 +185,18 @@ def solar_elevation(dt: datetime, lat: np.ndarray, lon: np.ndarray) -> np.ndarra
 
 
 def domain_is_daylit(dt: datetime) -> tuple[bool, float]:
-    """(usable, mean solar elevation) for the domain centre-ish sample."""
+    """(scene is inside the calibrated sun-angle range, mean solar elevation).
+
+    Deliberately the SCENE-level test, not the per-pixel visibility one. A
+    scene can be perfectly visible and still be outside the range the mask
+    thresholds were tuned in, in which case it is withheld rather than
+    published as a confident map of haze.
+    """
     lats = grid_lats()[::40]
     lons = grid_lons()[::40]
     lon2d, lat2d = np.meshgrid(lons, lats)
     elev = solar_elevation(dt, lat2d, lon2d)
-    frac_lit = float(np.mean(elev >= C.MIN_SOLAR_ELEVATION_DEG))
+    frac_lit = float(np.mean(elev >= C.MIN_SCENE_ELEVATION_DEG))
     return frac_lit >= 0.5, float(np.mean(elev))
 
 

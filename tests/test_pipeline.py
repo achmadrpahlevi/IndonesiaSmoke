@@ -307,13 +307,23 @@ def test_sun_correction_is_bounded_near_the_terminator():
     assert out[0, 0] == pytest.approx(10.0 / C.MIN_COS_SZA)
 
 
-def test_low_sun_scenes_are_refused_rather_than_guessed_at():
+def test_low_sun_scenes_are_withheld_rather_than_guessed_at():
     """At 16:30 WIB the slant path is ~3 air masses and thin regional haze
-    reads as thick smoke. The mask must decline, not publish 50% coverage."""
+    reads as thick smoke. The scene gate must refuse to publish it.
+
+    The refusal is at scene level, not by hatching the pixels: hatching a
+    third of a good map to express "the sun is lowish" makes a worse map.
+    """
     late = datetime(2026, 8, 21, 9, 30, tzinfo=UTC)  # 16:30 WIB, elev ~18
-    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), late)
-    assert out["stats"]["smoke_fraction"] == 0.0
-    assert out["stats"]["obscured_fraction"] == 1.0
+    assert common.domain_is_daylit(late)[0] is False
+
+    inside = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB, elev ~54
+    assert common.domain_is_daylit(inside)[0] is True
+
+    # And a scene inside the window is not hatched by the sun-angle rule.
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), inside)
+    assert out["stats"]["obscured_fraction"] < 0.05
+    assert out["smoke_bin"][PATCH].all()
 
 
 def test_the_same_smoke_is_detected_early_and_late_in_the_day():
@@ -485,8 +495,8 @@ def test_pruning_drops_darkness_before_it_evicts_daylight(tmp_path, monkeypatch)
     plain newest-N window fills with darkness and deletes the flow partner a
     backfill just downloaded."""
     monkeypatch.setattr(C, "STATE_DIR", tmp_path)
-    day_a = common.parse_slot_id("20260821_0730")   # 14:30 WIB
-    day_b = common.parse_slot_id("20260821_0800")   # 15:00 WIB
+    day_a = common.parse_slot_id("20260821_0630")   # 13:30 WIB
+    day_b = common.parse_slot_id("20260821_0700")   # 14:00 WIB
     nights = [common.parse_slot_id(t) for t in
               ("20260821_1900", "20260821_1930", "20260821_2000", "20260821_2030")]
     for slot in [day_a, day_b] + nights:
