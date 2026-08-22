@@ -639,6 +639,53 @@ def test_a_displaced_forecast_is_penalised(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# Validation scoring
+# --------------------------------------------------------------------------
+
+def test_only_fires_that_already_happened_are_scored():
+    """Scoring a midday scene against the full 24 h list charges it for fires
+    that had not started. That made 12:00 look like 2.4x when fires preceding
+    it gave 14.3x."""
+    from pipeline import validate
+
+    early = {"properties": {"acq_utc": "2026-08-21T05:30Z"}}
+    late = {"properties": {"acq_utc": "2026-08-21T09:30Z"}}
+    assert validate.acq_time(early) < NOON < validate.acq_time(late)
+    assert validate.acq_time({"properties": {}}) is None
+    assert validate.acq_time({"properties": {"acq_utc": "rubbish"}}) is None
+
+
+def test_enrichment_is_one_when_smoke_and_fires_are_unrelated():
+    from pipeline import validate
+
+    ny, nx = C.GRID_NY, C.GRID_NX
+    smoke = np.zeros((ny, nx), bool)
+    smoke[: ny // 2] = True          # exactly half the domain
+    obscured = np.zeros((ny, nx), bool)
+    lons, lats = common.grid_lons(), common.grid_lats()
+    # one hotspot inside the smoke half, one outside -> hit rate 0.5 = chance
+    feats = [
+        {"geometry": {"coordinates": [float(lons[nx // 2]), float(lats[ny // 4])]}},
+        {"geometry": {"coordinates": [float(lons[nx // 2]), float(lats[3 * ny // 4])]}},
+    ]
+    e, hits, scored = validate.enrichment(smoke, obscured, feats)
+    assert scored == 2 and hits == 1
+    assert e == pytest.approx(1.0, rel=0.05)
+
+
+def test_obscured_hotspots_are_not_scored():
+    from pipeline import validate
+
+    ny, nx = C.GRID_NY, C.GRID_NX
+    smoke = np.zeros((ny, nx), bool)
+    obscured = np.ones((ny, nx), bool)
+    lons, lats = common.grid_lons(), common.grid_lats()
+    feats = [{"geometry": {"coordinates": [float(lons[10]), float(lats[10])]}}]
+    _, _, scored = validate.enrichment(smoke, obscured, feats)
+    assert scored == 0, "cannot score a fire we could not see"
+
+
+# --------------------------------------------------------------------------
 # FIRMS parsing
 # --------------------------------------------------------------------------
 

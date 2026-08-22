@@ -376,6 +376,33 @@ The discriminating knobs, in rough order of impact:
 | `CLOUD_B13_MAX_K`, `CLOUD_B06_MIN` | mark more as obscured, forecast less |
 | `SMOKE_MIN_BLOB_CELLS` | drop more speckle |
 
+### Standing QA check
+
+```bash
+python -m pipeline.validate --date 20260821_0700
+```
+
+Scores the mask against FIRMS hotspots. The two share no physics — FIRMS is
+thermal infrared, the mask is visible/SWIR reflectance — so agreement is
+evidence rather than a restatement of our own assumptions.
+
+**It counts only fires acquired at or before the scene time.** Scoring a
+midday scene against the whole 24 h list charges it for fires that had not
+started yet, and that artefact is large enough to mislead badly:
+
+| WIB | vs all 24 h fires | vs fires that preceded the scene |
+|---|---|---|
+| 12:00 | 2.4x | **14.3x** (n=11) |
+| 12:30 | 1.0x | **3.9x** (n=13) |
+| 13:00 | 2.1x | **9.8x** (n=9) |
+| 14:00 | 3.8x | 4.3x |
+| 15:00 | 3.5x | 3.6x |
+
+Read naively, the first column says the morning product is worthless — 12:30
+at 1.0x is exactly chance. It is not; the mask is far more consistent across
+the day than that suggests. Morning sample sizes are small, so those figures
+are noisy, but they are all higher rather than lower.
+
 Score a forecast against what actually happened:
 
 ```bash
