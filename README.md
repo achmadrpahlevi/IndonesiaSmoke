@@ -13,6 +13,10 @@ outlook): **hourly, gridded, short-range smoke movement with a time slider.**
 Not a research product. No novelty claims, no validation study. See
 [PLAN.md](PLAN.md) for the scope decisions and what was deliberately left out.
 
+**Checking on it?** Read [OPERATIONS.md](OPERATIONS.md) first — what healthy
+looks like at each time of day, which alarming-looking behaviour is expected,
+and the list of faults already found and fixed so they are not re-diagnosed.
+
 ## How it works
 
 ```
