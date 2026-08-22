@@ -2,9 +2,13 @@ name: pipeline
 
 on:
   schedule:
-    # Every 30 minutes. GitHub runs scheduled jobs late under load; the
-    # staleness banner on the site covers the difference.
-    - cron: "*/30 * * * *"
+    # Every 30 minutes, deliberately at :07 and :37 rather than :00 and :30.
+    # GitHub delays or silently DROPS scheduled runs under load, and load peaks
+    # at the top of the hour, which is exactly where */30 fires. Measured on
+    # 2026-08-22: gaps of 27-34 min through the quiet hours, then 52, 91 and 64
+    # min once the busy period started, with nothing queued — the runs were
+    # never created. Odd minutes sit in a much shorter queue.
+    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       date:

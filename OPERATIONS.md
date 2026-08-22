@@ -6,8 +6,12 @@ and fixed the hard way.
 
 **Live:** <https://achmadrpahlevi.github.io/KalimantanWildfires/>
 **Repo:** <https://github.com/achmadrpahlevi/KalimantanWildfires>
-**Schedule:** every 30 min, `*/30`. GitHub runs cron late under load; 35–45 min
-actual spacing is normal and is why staleness is displayed rather than assumed.
+**Schedule:** every 30 min at **:07 and :37**, not `*/30`. GitHub delays or
+silently drops scheduled runs under load, and load peaks at the top of the
+hour. Measured on 2026-08-22 with `*/30`: 27–34 min gaps through quiet hours,
+then 52, 91 and 64 min once the busy period began, with nothing queued — the
+runs were never created. Odd minutes queue far shorter. Some drift is still
+normal, which is why staleness is displayed rather than assumed.
 
 ---
 
@@ -124,7 +128,9 @@ wrong. Above ~3× is healthy.
 - **Hotspots marked stale.** FIRMS was unreachable; the cached layer is shown.
   Degrades on its own.
 - **No slider right after dawn.** One frame, no flow. Resolves next cycle.
-- **Cron gaps of 60–90 min.** Observed and normal.
+- **Cron gaps.** Some drift is normal. Repeated gaps over ~60 min mean GitHub
+  is dropping runs; check the cron is still on odd minutes (`7,37`), not
+  `*/30`. Nothing will appear queued — dropped runs are never created.
 - **North Kalimantan smoke.** Measured as genuine (B05 ≈ 16.8, warm at 290 K),
   and BMKG's own analysis names Kalimantan Utara.
 

@@ -21,3 +21,6 @@ qa/
 
 # diagnostic scene cache (out-of-window scenes, kept deliberately)
 state_diag/
+
+# LinkedIn draft, not part of the pipeline
+linkedin_post.txt
