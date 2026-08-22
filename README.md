@@ -415,10 +415,49 @@ artefact — normalised indices `(a−b)/(a+b)`, which are invariant to the
 1/cos(SZA) correction, drift just as badly, because this is real radiative
 transfer rather than a units problem.
 
-Widening the window is a research task: it needs a proper atmospheric
-correction, or thresholds expressed as a function of air mass. Out of scope
-here, and the plan says so. The product stays inside the range it was
-calibrated in.
+#### Why it drifts, and how far a fix got
+
+The cause is Rayleigh scattering, and it is measurable rather than
+speculative. Rayleigh optical depth goes as roughly wavelength^-4:
+
+| band | wavelength | Rayleigh optical depth |
+|---|---|---|
+| B01 | 0.47 um | 0.1851 |
+| B03 | 0.64 um | 0.0525 |
+| B06 | 2.26 um | **0.0003** |
+
+So `B03 - B06`, the discriminator the whole mask rests on, differences a band
+with meaningful Rayleigh against one with essentially none — a factor of 175.
+It therefore accumulates a purely atmospheric term as the sun drops. Worse,
+Rayleigh path reflectance itself scales as 1/cos(SZA), and the solar-zenith
+correction divides by cos(SZA) again, so the artefact is amplified twice.
+
+`pipeline/rayleigh.py` implements a single-scattering path-reflectance
+correction (satellite zenith from the geostationary geometry, solar azimuth,
+scattering angle, Rayleigh phase function). Measured effect over 54 deg to
+33 deg of sun elevation:
+
+| statistic | drift |
+|---|---|
+| raw smoke fraction | **x5.0** |
+| corrected B01, p90 | x1.11 |
+| corrected `B03-B06`, p99 | **x1.02** |
+| corrected `B03-B06`, p90 | x1.57 |
+
+The thick-smoke tail becomes stationary. What still drifts is the median and
+p90, which is consistent with aerosol path radiance rather than Rayleigh —
+that is, thin haze genuinely becoming optically thicker along a longer slant
+path, which is a real signal and not an artefact.
+
+**This is not wired into the mask.** Subtracting Rayleigh lowers every
+reflectance, so every threshold in `config.py` would need recalibrating
+against corrected values — the current `SMOKE_B01_MIN` of 14 sits above the
+corrected median of 8.4, so applying the correction with today's thresholds
+detects nothing at all. Doing that properly means retuning the whole set, then
+re-checking the water and sediment rules under correction, then revalidating
+against ASMC and BMKG. That is the next substantial piece of work, and it is
+now a bounded one with evidence behind it rather than a vague "needs
+atmospheric correction".
 
 A 40° floor was tried first, stretching the day to 15:00 WIB, and rejected on
 sight: by then the sun is under 40° across the eastern half of the domain, so

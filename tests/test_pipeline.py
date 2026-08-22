@@ -374,6 +374,55 @@ def test_blob_filter_keeps_large_and_drops_small():
 
 
 # --------------------------------------------------------------------------
+# Rayleigh path reflectance — not yet wired into the mask, see README
+# --------------------------------------------------------------------------
+
+def test_rayleigh_optical_depth_falls_steeply_with_wavelength():
+    """The whole reason B03-B06 drifts with sun angle: one band has Rayleigh
+    and the other effectively does not."""
+    from pipeline import rayleigh
+
+    assert rayleigh.TAU_R["B01"] > rayleigh.TAU_R["B03"] > rayleigh.TAU_R["B06"]
+    assert rayleigh.TAU_R["B03"] / rayleigh.TAU_R["B06"] > 100
+
+
+def test_view_zenith_is_zero_at_the_sub_satellite_point():
+    from pipeline import rayleigh
+
+    nadir = rayleigh.view_zenith(np.array([0.0]), np.array([C.AHI_SATELLITE_LON]))
+    assert nadir[0] == pytest.approx(0.0, abs=0.1)
+    # Our domain is well off nadir; the western edge is the far one.
+    west = rayleigh.view_zenith(np.array([0.0]), np.array([C.LON_MIN]))
+    east = rayleigh.view_zenith(np.array([0.0]), np.array([C.LON_MAX]))
+    assert west > east > 0
+
+
+def test_rayleigh_path_reflectance_grows_as_the_sun_drops():
+    """This is the mechanism that inflated the mask all afternoon."""
+    from pipeline import rayleigh
+
+    high = rayleigh.path_reflectance("B03", np.array([20.0]), np.array([40.0]),
+                                     np.array([90.0]))
+    low = rayleigh.path_reflectance("B03", np.array([70.0]), np.array([40.0]),
+                                    np.array([90.0]))
+    assert low[0] > high[0]
+    # And the SWIR band it is differenced against barely moves.
+    swir_high = rayleigh.path_reflectance("B06", np.array([20.0]), np.array([40.0]),
+                                          np.array([90.0]))
+    swir_low = rayleigh.path_reflectance("B06", np.array([70.0]), np.array([40.0]),
+                                         np.array([90.0]))
+    assert (low[0] - high[0]) > 20 * (swir_low[0] - swir_high[0])
+
+
+def test_unknown_bands_get_no_correction():
+    from pipeline import rayleigh
+
+    out = rayleigh.path_reflectance("B13", np.array([40.0]), np.array([40.0]),
+                                    np.array([0.0]))
+    assert out[0] == 0.0
+
+
+# --------------------------------------------------------------------------
 # Advection
 # --------------------------------------------------------------------------
 
