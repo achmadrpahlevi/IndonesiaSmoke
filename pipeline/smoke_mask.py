@@ -63,6 +63,24 @@ def classify(grids: dict, slot: datetime) -> dict:
     b01, b03, b05, b06 = (
         sunz_correct(grids[b], elev) for b in ("B01", "B03", "B05", "B06")
     )
+
+    # Water is identified from the UNCORRECTED 1.6 um band. Rayleigh is
+    # negligible there (tau 0.0013) and the water test is a surface property,
+    # so correcting it would only add noise.
+    b05_surface = b05
+    b01_toa, b03_toa = b01, b03   # water branch stays on uncorrected values
+    if C.RAYLEIGH_CORRECT:
+        from . import rayleigh
+
+        sza = 90.0 - elev
+        saz = rayleigh.solar_azimuth(slot, lat2d, lon2d)
+        vza = rayleigh.view_zenith(lat2d, lon2d)
+        vaz = rayleigh.view_azimuth(lat2d, lon2d)
+        raa = np.abs(saz - vaz)
+        raa = np.where(raa > 180.0, 360.0 - raa, raa)
+        b01 = b01 - rayleigh.path_reflectance("B01", sza, vza, raa)
+        b03 = b03 - rayleigh.path_reflectance("B03", sza, vza, raa)
+        b06 = b06 - rayleigh.path_reflectance("B06", sza, vza, raa)
     b11 = grids["B11"].astype(np.float32)
     b13 = grids["B13"].astype(np.float32)
     b14 = grids["B14"].astype(np.float32)
@@ -80,7 +98,7 @@ def classify(grids: dict, slot: datetime) -> dict:
     # The cutoff sits well above pure water so that mixed coastal pixels —
     # tidal flats, estuaries, mangrove — fall on the water side and face the
     # stricter test, rather than passing as land with a sediment signature.
-    water = valid & (b05 < C.WATER_B05_MAX)
+    water = valid & (b05_surface < C.WATER_B05_MAX)
 
     daylit = elev >= C.MIN_SOLAR_ELEVATION_DEG
 
@@ -106,16 +124,22 @@ def classify(grids: dict, slot: datetime) -> dict:
 
     over_land = (
         (b01 >= C.SMOKE_B01_MIN)
-        & (b01 <= C.SMOKE_B01_MAX)
         & (blue_excess >= C.SMOKE_B01_MINUS_B03_MIN)
         & (vis_swir >= C.SMOKE_B03_MINUS_B06_MIN)
     )
 
     # Sediment fakes the SWIR contrast, so over water lean on blue instead.
+    #
+    # This branch deliberately uses UNCORRECTED reflectance. Over dark water
+    # the measured signal is mostly atmosphere, and these sediment-rejection
+    # thresholds were validated against raw values across several scenes.
+    # Recalibrating them for Rayleigh-corrected input at a single scene did
+    # not generalise: it held at 14:00 and let 73% of the noon detections back
+    # in over water, with the Malacca Strait returning to 6.4%.
     over_water = (
-        (b01 >= C.WATER_SMOKE_B01_MIN)
-        & (b01 <= C.SMOKE_B01_MAX)
-        & (blue_excess >= C.WATER_SMOKE_B01_MINUS_B03_MIN)
+        (b01_toa >= C.WATER_SMOKE_B01_MIN)
+        & (b01_toa <= C.SMOKE_B01_MAX)
+        & ((b01_toa - b03_toa) >= C.WATER_SMOKE_B01_MINUS_B03_MIN)
     )
 
     smoke_bin = usable & np.where(water, over_water, over_land)

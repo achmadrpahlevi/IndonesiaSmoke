@@ -449,15 +449,30 @@ p90, which is consistent with aerosol path radiance rather than Rayleigh —
 that is, thin haze genuinely becoming optically thicker along a longer slant
 path, which is a real signal and not an artefact.
 
-**This is not wired into the mask.** Subtracting Rayleigh lowers every
-reflectance, so every threshold in `config.py` would need recalibrating
-against corrected values — the current `SMOKE_B01_MIN` of 14 sits above the
-corrected median of 8.4, so applying the correction with today's thresholds
-detects nothing at all. Doing that properly means retuning the whole set, then
-re-checking the water and sediment rules under correction, then revalidating
-against ASMC and BMKG. That is the next substantial piece of work, and it is
-now a bounded one with evidence behind it rather than a vague "needs
-atmospheric correction".
+**This is now wired in** (`RAYLEIGH_CORRECT` in `config.py`). Subtracting
+Rayleigh lowers every reflectance, so the thresholds beneath it are not the
+old ones rescaled by eye — they were derived by quantile-matching against the
+14:00 WIB scene, the one point cross-validated against FIRMS, so the corrected
+mask reproduces the validated answer there exactly:
+
+| | 14:00 smoke | Malacca | Riau | FIRMS enrichment |
+|---|---|---|---|---|
+| before | 5.18% | 0.6% | 0.7% | 3.8x |
+| after | 5.19% | 0.6% | 0.7% | 3.8x |
+
+while drift inside the window drops from x4.5 to x2.7 (77 to 54 degrees).
+
+One part deliberately stays uncorrected: **the over-water branch**. Over dark
+water the measured signal is mostly atmosphere, and those sediment-rejection
+thresholds were validated on raw values across several scenes. Recalibrating
+them for corrected input at a single scene did not generalise — it held at
+14:00 and let 73% of the noon detections back in over water, with the Malacca
+Strait returning to 6.4%. Caught by revalidation, not by inspection, which is
+the argument for running the whole check after any threshold change.
+
+The window still ends at 14:00 WIB. Extending it is now a separate decision
+with a measurement behind it rather than a guess: corrected drift across 77 to
+33 degrees is x4.1, against x34.8 uncorrected.
 
 A 40° floor was tried first, stretching the day to 15:00 WIB, and rejected on
 sight: by then the sun is under 40° across the eastern half of the domain, so

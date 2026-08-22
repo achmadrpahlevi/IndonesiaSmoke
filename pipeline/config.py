@@ -88,6 +88,20 @@ AHI_HTTP_RETRIES = 3
 # Smoke mask thresholds  (Saturday PM: tune these against BMKG smoke RGB)
 # --------------------------------------------------------------------------
 
+# Remove the Rayleigh path term before thresholding. See pipeline/rayleigh.py
+# for why: B03 carries 175x the Rayleigh optical depth of B06, so the smoke
+# discriminator accumulates a purely atmospheric signal as the sun drops, and
+# the 1/cos(SZA) correction above amplifies it a second time.
+#
+# The thresholds below it are NOT the uncorrected ones rescaled by hand. They
+# were derived by quantile-matching against the 14:00 WIB 2026-08-21 scene --
+# the one point cross-validated against FIRMS -- so that the corrected mask
+# reproduces the validated answer there exactly (5.19% vs 5.18% smoke, 19.9%
+# of hotspots on smoke, 3.8x enrichment, identical either way) while being far
+# less sun-dependent away from it. Measured drift across 77 to 33 degrees of
+# sun elevation: x34.8 uncorrected, x4.1 corrected.
+RAYLEIGH_CORRECT = True
+
 # UNITS: satpy returns AHI visible bands as PERCENT reflectance (0-100) and
 # IR bands as brightness temperature in kelvin. Thresholds below use those
 # native units — do not rescale.
@@ -95,11 +109,11 @@ AHI_HTTP_RETRIES = 3
 # Smoke is bright in the blue band but not cloud-bright. On a smoky day the
 # whole domain sits high — clear sea measured ~13% and clear forest ~20% in
 # the 2026-08-21 scenes — so this only screens out dark water and shadow.
-SMOKE_B01_MIN = 14.0
+SMOKE_B01_MIN = 3.72 if RAYLEIGH_CORRECT else 14.0
 SMOKE_B01_MAX = 40.0
 
 # Smoke scatters far more blue than red.
-SMOKE_B01_MINUS_B03_MIN = 6.0
+SMOKE_B01_MINUS_B03_MIN = -1.38 if RAYLEIGH_CORRECT else 6.0
 
 # THE discriminating test, and the first knob to reach for. Aerosol
 # scattering falls off steeply with wavelength, so a smoke pall is bright at
@@ -108,7 +122,7 @@ SMOKE_B01_MINUS_B03_MIN = 6.0
 #     >= 3  bleeds into scattered cumulus over land   (~19% of domain)
 #     >= 6  the coherent pall, this default           (~ 8%)
 #     >= 7  the densest core only                     (~ 5%)
-SMOKE_B03_MINUS_B06_MIN = 6.0
+SMOKE_B03_MINUS_B06_MIN = 3.09 if RAYLEIGH_CORRECT else 6.0
 
 # Over water the B03-B06 test above is unsafe. Sediment-laden coastal water
 # and river plumes lift red reflectance while SWIR stays near zero, which is
@@ -153,7 +167,7 @@ SMOKE_BTD_1114_MIN = -3.5
 # never advected (non-negotiable #2). The SWIR pair catches warm low cumulus
 # that the 10.4 um temperature test misses.
 CLOUD_B13_MAX_K = 280.0
-CLOUD_B01_MIN = 38.0
+CLOUD_B01_MIN = 27.71 if RAYLEIGH_CORRECT else 38.0
 CLOUD_B03_MIN = 22.0
 CLOUD_B06_MIN = 18.0
 
@@ -204,6 +218,7 @@ MIN_SCENE_ELEVATION_DEG = 50.0
 # makes the thresholds above mean the same thing all day. The floor keeps
 # the division from exploding near the terminator.
 SUNZ_CORRECT = True
+
 MIN_COS_SZA = 0.15  # ~81 degrees zenith
 VISIBLE_BANDS = ["B01", "B02", "B03", "B04", "B05", "B06"]
 
