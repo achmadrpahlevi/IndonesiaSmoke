@@ -210,7 +210,7 @@ MIN_SOLAR_ELEVATION_DEG = 12.0
 #
 #    Widening this is a research task: it needs atmospheric correction, or
 #    thresholds expressed as a function of air mass. See README "Known limits".
-MIN_SCENE_ELEVATION_DEG = 50.0
+MIN_SCENE_ELEVATION_DEG = 40.0   # CANDIDATE: extends the day to 15:00 WIB
 
 # satpy hands back raw AHI albedo, which falls as the sun drops. Left
 # uncorrected the smoke field appears to shrink every afternoon — an
