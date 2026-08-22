@@ -173,6 +173,12 @@ def newest_daylight_mask(masks):
     daylight scene is silently discarded in favour of the darkness.
     """
     for slot, path in reversed(masks):
+        # The scene-level gate, not the per-pixel daylit fraction. A morning
+        # scene is fully lit by that measure and still must not be published:
+        # selecting on daylit_fraction alone put a 30.70% morning map on the
+        # site with frozen=true, which labelled it without withholding it.
+        if not common.domain_is_daylit(slot)[0]:
+            continue
         mask = load_mask_npz(path)
         if float(mask["stats"].get("daylit_fraction", 0.0)) >= C.DAYLIGHT_MIN_FRACTION:
             return slot, path, mask

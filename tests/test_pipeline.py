@@ -931,6 +931,33 @@ def test_an_old_scene_is_never_presented_as_current():
     )
 
 
+def test_publish_selects_on_the_scene_gate_not_the_pixel_fraction(
+    tmp_path, monkeypatch
+):
+    """A morning scene is fully lit per pixel and still must not be published.
+    Selecting on daylit_fraction alone put a 30.70% morning map on the live
+    site with frozen=true, which labelled it instead of withholding it."""
+    from pipeline import publish
+
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    morning = common.parse_slot_id("20260822_0150")   # 08:50 WIB
+    afternoon = common.parse_slot_id("20260821_0700")  # 14:00 WIB
+    for slot in (afternoon, morning):
+        ny, nx = 4, 4
+        np.savez_compressed(
+            common.mask_path(slot), slot=common.slot_id(slot),
+            smoke=np.zeros((ny, nx), np.float32),
+            smoke_bin=np.zeros((ny, nx), np.uint8),
+            obscured=np.zeros((ny, nx), np.uint8),
+            clear=np.ones((ny, nx), np.uint8),
+            stats=np.array([{"daylit_fraction": 1.0}], dtype=object))
+
+    masks = common.list_state("mask")
+    assert masks[-1][0] == morning, "morning really is the newest"
+    slot, _, _ = publish.newest_daylight_mask(masks)
+    assert slot == afternoon, "must fall back to the last afternoon scene"
+
+
 def test_publish_reports_nothing_when_no_mask_ever_saw_daylight(
     tmp_path, monkeypatch
 ):
