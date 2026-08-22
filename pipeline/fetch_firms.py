@@ -68,6 +68,22 @@ def fetch_source(key: str, source: str, days: int, session=None) -> list[dict]:
     return list(csv.DictReader(io.StringIO(text)))
 
 
+def age_ok(feature: dict, now: datetime) -> bool:
+    """Keep only detections inside the rolling window.
+
+    The API is fetched two UTC days deep so the layer never empties at
+    midnight; this is what makes "last 24 h" on the page true.
+    """
+    raw = (feature.get("properties") or {}).get("acq_utc")
+    if not raw:
+        return True          # undated is unknown, not old
+    try:
+        when = datetime.strptime(raw, "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True
+    return (now - when).total_seconds() <= C.FIRMS_MAX_AGE_HOURS * 3600
+
+
 def frp_ok(row: dict) -> bool:
     """Keep only fires above the radiative-power floor.
 
@@ -179,7 +195,22 @@ def collect(days: int, session=None) -> tuple[list[dict], list[str], int]:
 
     if not used:
         raise RuntimeError("; ".join(errors) or "no FIRMS source responded")
-    return features, used, sum(dropped.values())
+
+    now = common.utcnow()
+    fresh = [f for f in features if age_ok(f, now)]
+    aged = len(features) - len(fresh)
+    if aged:
+        log.info(
+            "dropped %d detections older than %d h (fetched %d UTC days deep "
+            "so the layer never empties at midnight)",
+            aged, C.FIRMS_MAX_AGE_HOURS, C.FIRMS_DAY_RANGE,
+        )
+    if not fresh:
+        log.warning(
+            "no hotspots in the last %d h — publishing an empty layer",
+            C.FIRMS_MAX_AGE_HOURS,
+        )
+    return fresh, used, sum(dropped.values())
 
 
 def write_geojson(

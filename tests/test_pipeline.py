@@ -777,6 +777,25 @@ def test_a_failed_fetch_with_no_cache_publishes_an_empty_flagged_layer(
     assert out["properties"]["stale"] is True
 
 
+def test_firms_is_fetched_deeper_than_the_window_it_publishes():
+    """FIRMS counts back N UTC days INCLUDING today, so day_range=1 means
+    "since 00:00 UTC". At 01:30 UTC that returned zero rows for this domain
+    while day_range=2 returned 4217. Fetching deeper than we publish is what
+    stops the layer emptying itself every night."""
+    assert C.FIRMS_DAY_RANGE >= 2
+    assert C.FIRMS_MAX_AGE_HOURS <= C.FIRMS_DAY_RANGE * 24
+
+
+def test_stale_detections_are_dropped_but_undated_ones_are_kept():
+    now = datetime(2026, 8, 22, 1, 30, tzinfo=UTC)
+    fresh = {"properties": {"acq_utc": "2026-08-21T18:00Z"}}   # 7.5 h old
+    old_one = {"properties": {"acq_utc": "2026-08-20T18:00Z"}}  # 31.5 h old
+    undated = {"properties": {}}
+    assert fetch_firms.age_ok(fresh, now)
+    assert not fetch_firms.age_ok(old_one, now)
+    assert fetch_firms.age_ok(undated, now), "undated is unknown, not old"
+
+
 def test_firms_area_string_is_west_south_east_north():
     """Order matters and is easy to transpose. Derived from config so that
     legitimately moving the domain does not fail the test."""

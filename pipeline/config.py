@@ -292,7 +292,15 @@ ADVECTION_DECAY_PER_STEP = 0.94
 
 FIRMS_API_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
 FIRMS_SOURCES = ["VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "MODIS_NRT"]
-FIRMS_DAY_RANGE = 1  # last 24 h
+# FIRMS counts back N UTC days INCLUDING today, so day_range=1 means "since
+# 00:00 UTC", not "the last 24 hours". At 01:30 UTC that returned zero rows
+# for this domain while day_range=2 returned 4217 — the layer emptied itself
+# every night at 00:00 UTC (07:00 WIB) and stayed empty until the first
+# overpass around 06:00 UTC (13:00 WIB), which is most of our publishing day.
+#
+# Fetch two days and filter to a true rolling window below.
+FIRMS_DAY_RANGE = 2
+FIRMS_MAX_AGE_HOURS = 24
 
 # Confidence is a weak dial here. Of 5261 live detections on 2026-08-21,
 # VIIRS returned 3843 nominal, 151 high and 0 low — so "high only" would
