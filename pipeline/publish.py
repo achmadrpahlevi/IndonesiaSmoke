@@ -295,8 +295,9 @@ def publish(outdir: Path) -> int:
         )
     over_water = float(mask["stats"].get("smoke_over_water_fraction", 0.0))
     if over_water > C.WATER_NOTE_ABOVE_FRACTION:
-        meta["water_caveat"] = C.CAVEAT_WATER
-        meta["smoke_over_water_pct"] = round(100 * over_water, 1)
+        pct = round(100 * over_water)
+        meta["water_caveat"] = C.CAVEAT_WATER.format(pct=pct)
+        meta["smoke_over_water_pct"] = pct
         log.info(
             "%.0f%% of detection is over water — adding the shallow-water note",
             100 * over_water,

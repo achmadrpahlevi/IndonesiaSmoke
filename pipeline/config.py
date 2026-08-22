@@ -270,12 +270,11 @@ MIN_SCENE_LOCAL_HOUR = 0.0
 # move and smoke does. Until then the map says which parts to distrust.
 WATER_NOTE_ABOVE_FRACTION = 0.10
 
+# One sentence. A caveat people actually read beats a paragraph they skip.
+# {pct} is filled in by publish, so the number moves with the scene.
 CAVEAT_WATER = (
-    "Some detection here is over shallow coastal water — the Java Sea "
-    "shelf east of Lampung, the Sunda and Karimata Straits, and river mouths. "
-    "Turbid shallow water looks like thin smoke in these bands and cannot be "
-    "separated from it by threshold. Treat over-water smoke near coasts as "
-    "unconfirmed."
+    "{pct}% of detection is over shallow coastal water, where turbidity looks "
+    "like thin smoke — treat it as unconfirmed."
 )
 
 CAVEAT_BELOW_ELEVATION_DEG = 50.0

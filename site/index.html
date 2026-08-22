@@ -351,8 +351,7 @@
       notes.push("Motion estimate rejected as implausible; smoke shown held in place.");
     }
     if (m.water_caveat) {
-      notes.push((m.smoke_over_water_pct ? m.smoke_over_water_pct + "% of " : "") +
-        "detection is over water. " + m.water_caveat);
+      notes.push(m.water_caveat);
     }
     if (m.low_sun_caveat) {
       notes.push(m.low_sun_caveat);
