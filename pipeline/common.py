@@ -214,7 +214,14 @@ def domain_is_daylit(dt: datetime) -> tuple[bool, float]:
     lon2d, lat2d = np.meshgrid(lons, lats)
     elev = solar_elevation(dt, lat2d, lon2d)
     frac_lit = float(np.mean(elev >= C.MIN_SCENE_ELEVATION_DEG))
-    return frac_lit >= 0.5, float(np.mean(elev))
+
+    # Morning scenes are withheld regardless of how high the sun is: sun and
+    # sensor share a side before local noon, which is a geometry nothing here
+    # was calibrated against. See MIN_SCENE_LOCAL_HOUR.
+    local_hour = to_display_tz(dt).hour + to_display_tz(dt).minute / 60.0
+    afternoon = local_hour >= C.MIN_SCENE_LOCAL_HOUR
+
+    return (frac_lit >= 0.5 and afternoon), float(np.mean(elev))
 
 
 # --------------------------------------------------------------------------

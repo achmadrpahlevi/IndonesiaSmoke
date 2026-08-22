@@ -218,6 +218,18 @@ MIN_SCENE_ELEVATION_DEG = 40.0
 # doubles, and the detections that appear west of Borneo are the least
 # trustworthy part of it: that is where coastal sediment and mixed land/water
 # pixels live, and where we have no independent confirmation.
+# Publish only from local solar afternoon. Elevation alone is not enough:
+# yesterday at 14:30 and 47 degrees the mask read 7.16%, today at 08:50 and 46
+# degrees it read 30.70% and painted Sumatra, the Malacca Strait and
+# Peninsular Malaysia. Same sun height, four times the smoke.
+#
+# The difference is geometry, not elevation. In the morning the sun is east
+# and Himawari sits at 140.7E, also east, so sun and sensor are on the same
+# side: near-specular over water and a scattering angle nothing was calibrated
+# against, because every scene used to tune this was afternoon. Until the
+# morning is understood it is not published.
+MIN_SCENE_LOCAL_HOUR = 12.0
+
 CAVEAT_BELOW_ELEVATION_DEG = 50.0
 
 CAVEAT_LOW_SUN = (

@@ -540,12 +540,28 @@ def write_mask(slot, clear_fraction, smoke=None):
     )
 
 
+def test_morning_scenes_are_withheld_whatever_the_sun_height():
+    """Yesterday 14:30 at 47 deg read 7.16%; today 08:50 at 46 deg read 30.70%
+    and painted Sumatra and Malaysia. Same sun height, four times the smoke —
+    the difference is morning geometry, with sun and sensor on the same side.
+    Nothing here was calibrated against it, so it is not published."""
+    morning = common.parse_slot_id("20260822_0300")   # 10:00 WIB, sun is high
+    afternoon = common.parse_slot_id("20260821_0500")  # 12:00 WIB
+    assert common.solar_elevation(
+        morning, np.array([-1.0]), np.array([114.0])
+    )[0] > C.MIN_SCENE_ELEVATION_DEG, "morning scene is high enough on elevation"
+    assert not common.domain_is_daylit(morning)[0], "but must still be withheld"
+    assert common.domain_is_daylit(afternoon)[0]
+    # It stays keepable, so it can still serve as a flow partner at noon.
+    assert common.scene_is_visible(morning)
+
+
 def test_a_scene_can_be_keepable_without_being_publishable():
     """The first run of every day fetches a flow partner just below the
     publish gate. Pruning on that gate deleted it seconds later, so no pair
     could ever form at dawn."""
-    edge = common.parse_slot_id("20260822_0120")    # 08:20 WIB, ~40 deg
-    inside = common.parse_slot_id("20260822_0150")  # 08:50 WIB
+    edge = common.parse_slot_id("20260822_0120")    # 08:20 WIB, morning
+    inside = common.parse_slot_id("20260821_0700")  # 14:00 WIB, afternoon
     night = common.parse_slot_id("20260821_2020")   # 03:20 WIB
 
     assert common.scene_is_visible(edge)
