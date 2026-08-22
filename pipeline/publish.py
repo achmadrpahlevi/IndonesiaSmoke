@@ -198,15 +198,33 @@ def publish(outdir: Path) -> int:
 
     # Render the last daylight product rather than assuming one is already
     # published: at dusk, and on a cold cache, there may be nothing up yet.
-    lit_now, mean_elev = common.domain_is_daylit(common.utcnow())
-    is_current = scene_slot == masks[-1][0] and lit_now
+    now = common.utcnow()
+    lit_now, mean_elev = common.domain_is_daylit(now)
+    age_minutes = common.minutes_between(now, scene_slot)
+
+    # "Current" means recent as well as newest-and-daylit. Without the age
+    # test a backfilled scene from yesterday afternoon passed as live, because
+    # it was the newest mask held and the sun happened to be up: the page
+    # reported frozen=false over a scene 18 hours old.
+    is_current = (
+        scene_slot == masks[-1][0]
+        and lit_now
+        and age_minutes <= C.STALE_MINUTES
+    )
     frozen_reason = ""
     if not is_current:
-        frozen_reason = (
-            f"night over the domain (mean solar elevation {mean_elev:.0f} deg); "
-            f"showing the last daylight scene, {common.to_display_tz(scene_slot):%H:%M} "
-            f"{C.DISPLAY_TZ_LABEL}"
-        )
+        if not lit_now:
+            frozen_reason = (
+                f"night over the domain (mean solar elevation {mean_elev:.0f} deg); "
+                f"showing the last daylight scene, "
+                f"{common.to_display_tz(scene_slot):%H:%M} {C.DISPLAY_TZ_LABEL}"
+            )
+        else:
+            frozen_reason = (
+                f"no recent scene; showing "
+                f"{common.to_display_tz(scene_slot):%d %b %H:%M} "
+                f"{C.DISPLAY_TZ_LABEL}, {age_minutes / 60:.0f} h old"
+            )
         log.warning("publishing frozen: %s", frozen_reason)
 
     # Look up the forecast FOR THIS SCENE. Taking the newest file and

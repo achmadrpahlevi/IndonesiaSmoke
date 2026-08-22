@@ -8,6 +8,7 @@ the mask rules, and the direction things move in.
     python -m pytest tests -q
 """
 
+import pathlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -871,6 +872,18 @@ def test_low_sun_scenes_publish_with_a_caveat(tmp_path, monkeypatch):
     low = publish.load_mask_npz(common.mask_path(NOON + timedelta(hours=3)))
     assert high["stats"]["mean_solar_elevation"] >= C.CAVEAT_BELOW_ELEVATION_DEG
     assert low["stats"]["mean_solar_elevation"] < C.CAVEAT_BELOW_ELEVATION_DEG
+
+
+def test_an_old_scene_is_never_presented_as_current():
+    """Newest-mask-and-sun-is-up is not the same as current. A backfilled
+    scene from yesterday afternoon passed both and the page reported
+    frozen=false over data 18 hours old."""
+    from pipeline import publish
+
+    src = pathlib.Path(publish.__file__).read_text(encoding="utf-8")
+    assert "age_minutes <= C.STALE_MINUTES" in src, (
+        "publish must require recency, not just newest-and-daylit"
+    )
 
 
 def test_publish_reports_nothing_when_no_mask_ever_saw_daylight(
