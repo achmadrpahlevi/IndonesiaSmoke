@@ -198,8 +198,8 @@ def publish(outdir: Path) -> int:
         return freeze_existing(
             outdir,
             newest_slot,
-            f"night over the domain (mean solar elevation {mean_elev:.0f} deg) "
-            "and no daylight scene held in state",
+            f"nothing publishable in state yet "
+            f"(mean solar elevation {mean_elev:.0f} deg)",
         )
 
     # Render the last daylight product rather than assuming one is already
@@ -219,11 +219,24 @@ def publish(outdir: Path) -> int:
     )
     frozen_reason = ""
     if not is_current:
-        if not lit_now:
+        local_now = common.to_display_tz(now)
+        shown = (
+            f"showing the last published scene, "
+            f"{common.to_display_tz(scene_slot):%d %b %H:%M} {C.DISPLAY_TZ_LABEL}"
+        )
+        if mean_elev < C.MIN_SCENE_ELEVATION_DEG:
             frozen_reason = (
-                f"night over the domain (mean solar elevation {mean_elev:.0f} deg); "
-                f"showing the last daylight scene, "
-                f"{common.to_display_tz(scene_slot):%H:%M} {C.DISPLAY_TZ_LABEL}"
+                f"sun too low over the domain ({mean_elev:.0f}°); {shown}"
+            )
+        elif not lit_now:
+            # Sun is high enough but it is before local noon, which this
+            # product does not publish. Saying "night" at 09:00 with the sun
+            # at 53 degrees is worse than saying nothing.
+            frozen_reason = (
+                f"mornings are not published — sun and satellite share a "
+                f"side before noon and the mask is not calibrated for it; "
+                f"{shown}. Live updates resume from "
+                f"{int(C.MIN_SCENE_LOCAL_HOUR):02d}:00 {C.DISPLAY_TZ_LABEL}"
             )
         else:
             frozen_reason = (
