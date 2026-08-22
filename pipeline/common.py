@@ -184,6 +184,23 @@ def solar_elevation(dt: datetime, lat: np.ndarray, lon: np.ndarray) -> np.ndarra
     return 90.0 - np.degrees(np.arccos(cos_zen))
 
 
+def scene_is_visible(dt: datetime) -> bool:
+    """Can the sensor see anything at all in this scene?
+
+    Deliberately a much lower bar than domain_is_daylit, which asks whether a
+    scene is inside the calibrated range and therefore publishable. A scene at
+    the edge of the morning is not publishable but is a perfectly good optical
+    flow partner, and pruning on the publish gate deleted exactly that scene
+    seconds after --ensure-pair fetched it — so the first run of every day
+    could never form a pair.
+    """
+    lats = grid_lats()[::40]
+    lons = grid_lons()[::40]
+    lon2d, lat2d = np.meshgrid(lons, lats)
+    elev = solar_elevation(dt, lat2d, lon2d)
+    return float(np.mean(elev >= C.MIN_SOLAR_ELEVATION_DEG)) >= 0.5
+
+
 def domain_is_daylit(dt: datetime) -> tuple[bool, float]:
     """(scene is inside the calibrated sun-angle range, mean solar elevation).
 
@@ -279,7 +296,7 @@ def prune_state(prefix: str, keep: int = 8, drop_dark: bool = True) -> None:
     if drop_dark:
         keepable = []
         for slot, path in entries:
-            if domain_is_daylit(slot)[0]:
+            if scene_is_visible(slot):
                 keepable.append((slot, path))
             else:
                 try:

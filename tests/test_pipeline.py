@@ -540,6 +540,35 @@ def write_mask(slot, clear_fraction, smoke=None):
     )
 
 
+def test_a_scene_can_be_keepable_without_being_publishable():
+    """The first run of every day fetches a flow partner just below the
+    publish gate. Pruning on that gate deleted it seconds later, so no pair
+    could ever form at dawn."""
+    edge = common.parse_slot_id("20260822_0120")    # 08:20 WIB, ~40 deg
+    inside = common.parse_slot_id("20260822_0150")  # 08:50 WIB
+    night = common.parse_slot_id("20260821_2020")   # 03:20 WIB
+
+    assert common.scene_is_visible(edge)
+    assert not common.domain_is_daylit(edge)[0], "edge scene is not publishable"
+    assert common.scene_is_visible(inside) and common.domain_is_daylit(inside)[0]
+    assert not common.scene_is_visible(night)
+
+
+def test_pruning_keeps_an_edge_of_day_flow_partner(tmp_path, monkeypatch):
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    edge = common.parse_slot_id("20260822_0120")
+    night = common.parse_slot_id("20260821_2020")
+    for slot in (edge, night):
+        common.scene_path(slot).parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(common.scene_path(slot), slot=common.slot_id(slot),
+                            bands=np.array(["B01"], dtype=object),
+                            B01=np.zeros((2, 2), np.float32))
+    common.prune_state("scene", keep=6)
+    left = [s for s, _ in common.list_state("scene")]
+    assert edge in left, "the dawn flow partner must survive pruning"
+    assert night not in left
+
+
 def test_pruning_drops_darkness_before_it_evicts_daylight(tmp_path, monkeypatch):
     """A night slot is newer than every daylight slot of the same day, so a
     plain newest-N window fills with darkness and deletes the flow partner a

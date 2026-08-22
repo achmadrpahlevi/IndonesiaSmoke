@@ -378,7 +378,11 @@ def main(argv=None) -> int:
     target = common.parse_cli_datetime(args.date) if args.date else None
     fc = forecast(target)
     if fc is None:
-        # No usable pair is the expected state at night, not a failure.
+        # Not having a pair is recoverable: publish still puts out the current
+        # smoke field, just without a forecast, and the page shows no slider.
+        # Failing here instead skips FIRMS and publish entirely and takes the
+        # whole run down, which is how one missing partner at dawn cost a
+        # complete cycle.
         lit, elev = common.domain_is_daylit(common.utcnow())
         if not lit:
             log.info(
@@ -386,8 +390,12 @@ def main(argv=None) -> int:
                 "advect; the last daylight forecast stands",
                 elev,
             )
-            return 0
-        return 1
+        else:
+            log.warning(
+                "no usable pair of masks — publishing the current field "
+                "without a forecast"
+            )
+        return 0
 
     if args.verify:
         verify(fc, common.parse_cli_datetime(args.verify))
