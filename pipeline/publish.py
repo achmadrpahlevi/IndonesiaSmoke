@@ -293,6 +293,14 @@ def publish(outdir: Path) -> int:
             mean_elev_scene,
             C.CAVEAT_BELOW_ELEVATION_DEG,
         )
+    over_water = float(mask["stats"].get("smoke_over_water_fraction", 0.0))
+    if over_water > C.WATER_NOTE_ABOVE_FRACTION:
+        meta["water_caveat"] = C.CAVEAT_WATER
+        meta["smoke_over_water_pct"] = round(100 * over_water, 1)
+        log.info(
+            "%.0f%% of detection is over water — adding the shallow-water note",
+            100 * over_water,
+        )
     meta["daylight"] = bool(is_current)
     meta["frozen"] = not is_current
     if frozen_reason:

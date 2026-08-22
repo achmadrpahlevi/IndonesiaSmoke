@@ -163,6 +163,13 @@ def classify(grids: dict, slot: datetime) -> dict:
         "obscured_fraction": float(obscured.sum() / n),
         "clear_fraction": float((~obscured).sum() / n),
         "smoke_fraction": float(smoke_bin.sum() / n),
+        # How much of the detection sits over water. Shallow, turbid coastal
+        # water is spectrally close to thin smoke in these bands and passes
+        # both branches, so this is the number that says how much of the map
+        # to distrust rather than a fixed disclaimer.
+        "smoke_over_water_fraction": (
+            float((smoke_bin & water).sum() / max(smoke_bin.sum(), 1))
+        ),
         "mean_solar_elevation": float(elev.mean()),
     }
 

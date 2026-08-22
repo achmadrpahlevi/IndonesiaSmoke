@@ -255,6 +255,29 @@ MIN_SCENE_ELEVATION_DEG = 40.0
 # place as a valve: raise it to withhold early scenes without a code change.
 MIN_SCENE_LOCAL_HOUR = 0.0
 
+# Note shown when an unusual share of the detection sits over water.
+#
+# Shallow turbid water -- the Java Sea shelf east of Lampung, the Sunda and
+# Karimata Straits, estuaries -- reads B05 around 6 to 9, between open water
+# at ~2 and land at ~16 or more, and it lifts the red band the way thin smoke
+# does. Measured on 2026-08-22 those pixels satisfied BOTH branches: B01 28.7,
+# blue excess 13.4, B03 15.3, all above their thresholds. Raising WATER_B05_MAX
+# to 12 moved them across the boundary and changed nothing, while costing the
+# afternoon more than half of West Kalimantan's detections.
+#
+# There is no threshold that separates them from thin smoke in these seven
+# bands. It needs bathymetry, or temporal persistence -- sediment does not
+# move and smoke does. Until then the map says which parts to distrust.
+WATER_NOTE_ABOVE_FRACTION = 0.10
+
+CAVEAT_WATER = (
+    "Some detection here is over shallow coastal water — the Java Sea "
+    "shelf east of Lampung, the Sunda and Karimata Straits, and river mouths. "
+    "Turbid shallow water looks like thin smoke in these bands and cannot be "
+    "separated from it by threshold. Treat over-water smoke near coasts as "
+    "unconfirmed."
+)
+
 CAVEAT_BELOW_ELEVATION_DEG = 50.0
 
 CAVEAT_LOW_SUN = (

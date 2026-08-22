@@ -540,6 +540,22 @@ def write_mask(slot, clear_fraction, smoke=None):
     )
 
 
+def test_over_water_share_is_recorded_so_the_map_can_say_so():
+    """Shallow turbid water passes both branches and cannot be separated from
+    thin smoke by threshold, so the product reports how much of the detection
+    is over water rather than carrying a fixed disclaimer."""
+    water_smoke = {
+        "B01": 30.0, "B03": 16.0, "B05": 2.5, "B06": 1.5,
+        "B11": 296.0, "B13": 299.0, "B14": 298.0,
+    }
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, water_smoke)), NOON)
+    assert out["smoke_bin"][PATCH].all(), "thick smoke over water still detected"
+    assert out["stats"]["smoke_over_water_fraction"] == pytest.approx(1.0)
+
+    land_smoke = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), NOON)
+    assert land_smoke["stats"]["smoke_over_water_fraction"] == pytest.approx(0.0)
+
+
 def test_clear_water_is_not_smoke_however_blue_it_is():
     """The water test read "bright blue with a large blue-minus-red excess",
     which is clear tropical water. Morning water measured B01 20.3 and blue
