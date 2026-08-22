@@ -350,6 +350,9 @@
     } else if (m.quality && m.quality.flow_rejected) {
       notes.push("Motion estimate rejected as implausible; smoke shown held in place.");
     }
+    if (m.low_sun_caveat) {
+      notes.push(m.low_sun_caveat);
+    }
     if (m.firms && m.firms.below_frp_floor) {
       notes.push(m.firms.below_frp_floor.toLocaleString() +
         " weaker detections below " + m.firms.min_frp_mw +

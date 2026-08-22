@@ -776,6 +776,37 @@ def test_publish_skips_a_night_mask_in_favour_of_the_last_daylight_one(
     assert slot == day
 
 
+def test_low_sun_scenes_publish_with_a_caveat(tmp_path, monkeypatch):
+    """The 40-50 degree band is published but is the least trustworthy part of
+    the day, and the detections west of Borneo are the least trustworthy part
+    of that. The page has to say so."""
+    from pipeline import publish
+
+    assert C.MIN_SCENE_ELEVATION_DEG < C.CAVEAT_BELOW_ELEVATION_DEG, (
+        "there must be a band that publishes but carries the caveat"
+    )
+    assert "Sumatra" in C.CAVEAT_LOW_SUN
+
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    for slot, elev in ((NOON, 77.0), (NOON + timedelta(hours=3), 43.0)):
+        ny, nx = 4, 4
+        np.savez_compressed(
+            common.mask_path(slot),
+            slot=common.slot_id(slot),
+            smoke=np.zeros((ny, nx), np.float32),
+            smoke_bin=np.zeros((ny, nx), np.uint8),
+            obscured=np.zeros((ny, nx), np.uint8),
+            clear=np.ones((ny, nx), np.uint8),
+            stats=np.array(
+                [{"daylit_fraction": 1.0, "mean_solar_elevation": elev}], dtype=object
+            ),
+        )
+    high = publish.load_mask_npz(common.mask_path(NOON))
+    low = publish.load_mask_npz(common.mask_path(NOON + timedelta(hours=3)))
+    assert high["stats"]["mean_solar_elevation"] >= C.CAVEAT_BELOW_ELEVATION_DEG
+    assert low["stats"]["mean_solar_elevation"] < C.CAVEAT_BELOW_ELEVATION_DEG
+
+
 def test_publish_reports_nothing_when_no_mask_ever_saw_daylight(
     tmp_path, monkeypatch
 ):

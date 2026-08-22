@@ -246,6 +246,16 @@ def publish(outdir: Path) -> int:
 
     firms = common.read_json(outdir / "firms.geojson") or {}
     meta = build_meta(scene_slot, mask, fc, layers, firms.get("properties"))
+    # Flag the extended, less-trustworthy end of the day on the page itself.
+    mean_elev_scene = float(mask["stats"].get("mean_solar_elevation", 90.0))
+    if mean_elev_scene < C.CAVEAT_BELOW_ELEVATION_DEG:
+        meta["low_sun_caveat"] = C.CAVEAT_LOW_SUN
+        log.info(
+            "scene sun elevation %.0f deg is below %.0f — publishing with the "
+            "low-sun caveat",
+            mean_elev_scene,
+            C.CAVEAT_BELOW_ELEVATION_DEG,
+        )
     meta["daylight"] = bool(is_current)
     meta["frozen"] = not is_current
     if frozen_reason:

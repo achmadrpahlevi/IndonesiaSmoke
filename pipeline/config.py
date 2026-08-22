@@ -210,7 +210,22 @@ MIN_SOLAR_ELEVATION_DEG = 12.0
 #
 #    Widening this is a research task: it needs atmospheric correction, or
 #    thresholds expressed as a function of air mass. See README "Known limits".
-MIN_SCENE_ELEVATION_DEG = 40.0   # CANDIDATE: extends the day to 15:00 WIB
+MIN_SCENE_ELEVATION_DEG = 40.0
+
+# Scenes below this elevation are published but carry a caveat on the page.
+# Between 40 and 50 degrees the mask still agrees with FIRMS (3.5x enrichment
+# against 3.8x at the validated point) but the domain smoke fraction roughly
+# doubles, and the detections that appear west of Borneo are the least
+# trustworthy part of it: that is where coastal sediment and mixed land/water
+# pixels live, and where we have no independent confirmation.
+CAVEAT_BELOW_ELEVATION_DEG = 50.0
+
+CAVEAT_LOW_SUN = (
+    "Sun below 50°: detections are less reliable than at midday. "
+    "Areas flagged over Sumatra in particular should not be read as smoke "
+    "without corroboration — they are more likely coastal or surface "
+    "effects. Kalimantan is the calibrated part of this map."
+)
 
 # satpy hands back raw AHI albedo, which falls as the sun drops. Left
 # uncorrected the smoke field appears to shrink every afternoon — an
