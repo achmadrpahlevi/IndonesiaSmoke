@@ -150,6 +150,26 @@ WATER_B05_MAX = 8.0
 WATER_SMOKE_B01_MIN = 20.0
 WATER_SMOKE_B01_MINUS_B03_MIN = 10.0
 
+# Smoke over water must brighten the RED band too, not just the blue.
+#
+# Without this the water test read "bright blue with a large blue-minus-red
+# excess", which is the definition of clear tropical water. It only survived
+# because afternoon glint lifts B06 and dulls the contrast; in the morning,
+# with no glint, clear water measured B01 20.3 and blue excess 12.5 and sailed
+# through. 74% of a 30.70% morning map was open sea.
+#
+# Clear water stays dark at 0.64 um whatever the geometry, so requiring red
+# separates it from smoke. Measured on the 08:50 WIB scene, enrichment against
+# fires that preceded it:
+#     >=  0   30.70% smoke, 1.5x   (chance)
+#     >= 12   10.89%,       4.3x
+#     >= 14    7.73%,       6.0x   <- default, beats the afternoon's 4.2x
+#     >= 16    6.50%,       7.1x
+# The afternoon is unaffected at every value, because afternoon water never
+# passes the B01 gate anyway. This is a morning fix that costs the rest of the
+# day nothing.
+WATER_SMOKE_B03_MIN = 14.0
+
 # Reflectance excess at which the overlay reaches full opacity.
 SMOKE_DENSITY_SPAN = 8.0
 
@@ -228,7 +248,12 @@ MIN_SCENE_ELEVATION_DEG = 40.0
 # side: near-specular over water and a scattering angle nothing was calibrated
 # against, because every scene used to tune this was afternoon. Until the
 # morning is understood it is not published.
-MIN_SCENE_LOCAL_HOUR = 12.0
+# Emergency morning block, now disabled. It was set to 12.0 when the morning
+# map came out as smoke everywhere; the cause turned out to be the water test
+# above rather than anything intrinsic to morning geometry, and with that
+# fixed the morning outscores the afternoon on hotspot agreement. Left in
+# place as a valve: raise it to withhold early scenes without a code change.
+MIN_SCENE_LOCAL_HOUR = 0.0
 
 CAVEAT_BELOW_ELEVATION_DEG = 50.0
 

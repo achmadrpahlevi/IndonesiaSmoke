@@ -140,6 +140,9 @@ def classify(grids: dict, slot: datetime) -> dict:
         (b01_toa >= C.WATER_SMOKE_B01_MIN)
         & (b01_toa <= C.SMOKE_B01_MAX)
         & ((b01_toa - b03_toa) >= C.WATER_SMOKE_B01_MINUS_B03_MIN)
+        # Clear water is blue and dark red. Smoke brightens red as well, so
+        # without this the test just selects tropical water.
+        & (b03_toa >= C.WATER_SMOKE_B03_MIN)
     )
 
     smoke_bin = usable & np.where(water, over_water, over_land)

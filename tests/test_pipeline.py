@@ -540,19 +540,25 @@ def write_mask(slot, clear_fraction, smoke=None):
     )
 
 
-def test_morning_scenes_are_withheld_whatever_the_sun_height():
-    """Yesterday 14:30 at 47 deg read 7.16%; today 08:50 at 46 deg read 30.70%
-    and painted Sumatra and Malaysia. Same sun height, four times the smoke —
-    the difference is morning geometry, with sun and sensor on the same side.
-    Nothing here was calibrated against it, so it is not published."""
-    morning = common.parse_slot_id("20260822_0300")   # 10:00 WIB, sun is high
-    afternoon = common.parse_slot_id("20260821_0500")  # 12:00 WIB
-    assert common.solar_elevation(
-        morning, np.array([-1.0]), np.array([114.0])
-    )[0] > C.MIN_SCENE_ELEVATION_DEG, "morning scene is high enough on elevation"
-    assert not common.domain_is_daylit(morning)[0], "but must still be withheld"
-    assert common.domain_is_daylit(afternoon)[0]
-    # It stays keepable, so it can still serve as a flow partner at noon.
+def test_clear_water_is_not_smoke_however_blue_it_is():
+    """The water test read "bright blue with a large blue-minus-red excess",
+    which is clear tropical water. Morning water measured B01 20.3 and blue
+    excess 12.5 and passed, making 74% of a 30.70% map open sea. Clear water
+    stays dark in the red whatever the geometry."""
+    clear_water = {
+        "B01": 20.3, "B03": 7.8, "B05": 2.5, "B06": 1.2,
+        "B11": 296.0, "B13": 299.0, "B14": 298.0,
+    }
+    assert clear_water["B01"] >= C.WATER_SMOKE_B01_MIN
+    assert clear_water["B01"] - clear_water["B03"] >= C.WATER_SMOKE_B01_MINUS_B03_MIN
+    assert clear_water["B03"] < C.WATER_SMOKE_B03_MIN, "red band must reject it"
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, clear_water)), NOON)
+    assert not out["smoke_bin"][PATCH].any()
+
+
+def test_mornings_are_published_again():
+    morning = common.parse_slot_id("20260822_0300")   # 10:00 WIB
+    assert common.domain_is_daylit(morning)[0]
     assert common.scene_is_visible(morning)
 
 
@@ -940,7 +946,7 @@ def test_publish_selects_on_the_scene_gate_not_the_pixel_fraction(
     from pipeline import publish
 
     monkeypatch.setattr(C, "STATE_DIR", tmp_path)
-    morning = common.parse_slot_id("20260822_0150")   # 08:50 WIB
+    morning = common.parse_slot_id("20260821_2020")   # 03:20 WIB, night
     afternoon = common.parse_slot_id("20260821_0700")  # 14:00 WIB
     for slot in (afternoon, morning):
         ny, nx = 4, 4
@@ -953,9 +959,9 @@ def test_publish_selects_on_the_scene_gate_not_the_pixel_fraction(
             stats=np.array([{"daylit_fraction": 1.0}], dtype=object))
 
     masks = common.list_state("mask")
-    assert masks[-1][0] == morning, "morning really is the newest"
+    assert masks[-1][0] == morning, "the unpublishable scene really is newest"
     slot, _, _ = publish.newest_daylight_mask(masks)
-    assert slot == afternoon, "must fall back to the last afternoon scene"
+    assert slot == afternoon, "must fall back to the last publishable scene"
 
 
 def test_publish_reports_nothing_when_no_mask_ever_saw_daylight(
