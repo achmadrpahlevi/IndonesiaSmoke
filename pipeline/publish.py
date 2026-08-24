@@ -53,19 +53,24 @@ def smoke_png(density: np.ndarray) -> "Image.Image":
     return Image.fromarray(np.dstack([rgb, alpha[..., None]]))
 
 
-def obscured_png(obscured: np.ndarray) -> "Image.Image":
-    """Diagonal hatching. Never a solid fill — it must not read as data."""
+def hatch_png(mask: np.ndarray, rgb, alpha: int, period: int, width: int) -> "Image.Image":
+    """Diagonal hatching. Never a solid fill — it must not read as data.
+
+    Parameterised because there are now two reasons a pixel is not judged,
+    and they must be visually distinguishable: cloud in the way, and a sun
+    angle these thresholds were never calibrated for.
+    """
     from PIL import Image
 
-    m = np.asarray(obscured).astype(bool)
+    m = np.asarray(mask).astype(bool)
     ny, nx = m.shape
     yy, xx = np.mgrid[0:ny, 0:nx]
-    hatch = ((xx + yy) % C.OBSCURED_HATCH_PERIOD) < C.OBSCURED_HATCH_WIDTH
+    hatch = ((xx + yy) % period) < width
 
-    rgb = np.zeros((ny, nx, 3), dtype=np.uint8)
-    rgb[..., :] = np.array(C.OBSCURED_RGB, dtype=np.uint8)
-    alpha = np.where(m & hatch, C.OBSCURED_ALPHA, 0).astype(np.uint8)
-    return Image.fromarray(np.dstack([rgb, alpha[..., None]]))
+    out_rgb = np.zeros((ny, nx, 3), dtype=np.uint8)
+    out_rgb[..., :] = np.array(rgb, dtype=np.uint8)
+    out_alpha = np.where(m & hatch, alpha, 0).astype(np.uint8)
+    return Image.fromarray(np.dstack([out_rgb, out_alpha[..., None]]))
 
 
 def save_png(img, path: Path) -> str:
@@ -121,6 +126,7 @@ def build_meta(scene_slot, mask, fc, layers, firms_props) -> dict:
         "layers": {
             "now": layers["now"],
             "obscured": layers["obscured"],
+            "uncalibrated": layers.get("uncalibrated"),
             "forecast": forecast_index,
         },
         "scene_stats": {k: round(float(v), 4) for k, v in stats.items()},
@@ -147,7 +153,12 @@ def freeze_existing(outdir: Path, scene_slot, reason: str) -> int:
             "view_bounds": common.view_bounds(),
             "focus": [C.FOCUS_LAT, C.FOCUS_LON],
             "caption": C.CAPTION,
-            "layers": {"now": None, "obscured": None, "forecast": []},
+            "layers": {
+                "now": None,
+                "obscured": None,
+                "uncalibrated": None,
+                "forecast": [],
+            },
             "cities": C.CITIES,
         }
     meta["daylight"] = False
@@ -198,18 +209,18 @@ def publish(outdir: Path) -> int:
     scene_slot, mask_file, mask = newest_daylight_mask(masks)
     if scene_slot is None:
         newest_slot = masks[-1][0]
-        _, mean_elev = common.domain_is_daylit(newest_slot)
+        calibrated = common.calibrated_fraction(newest_slot)
         return freeze_existing(
             outdir,
             newest_slot,
             f"nothing publishable in state yet "
-            f"(mean solar elevation {mean_elev:.0f} deg)",
+            f"({100 * calibrated:.0f}% of the domain inside the sun-angle window)",
         )
 
     # Render the last daylight product rather than assuming one is already
     # published: at dusk, and on a cold cache, there may be nothing up yet.
     now = common.utcnow()
-    lit_now, mean_elev = common.domain_is_daylit(now)
+    lit_now, _ = common.domain_is_daylit(now)
     age_minutes = common.minutes_between(now, scene_slot)
 
     # "Current" means recent as well as newest-and-daylit. Without the age
@@ -223,24 +234,24 @@ def publish(outdir: Path) -> int:
     )
     frozen_reason = ""
     if not is_current:
-        local_now = common.to_display_tz(now)
+        calibrated = common.calibrated_fraction(now)
         shown = (
             f"showing the last published scene, "
             f"{common.to_display_tz(scene_slot):%d %b %H:%M} {C.DISPLAY_TZ_LABEL}"
         )
-        if mean_elev < C.MIN_SCENE_ELEVATION_DEG:
+        if calibrated < C.MIN_CALIBRATED_FRACTION:
+            # Not "the sun is low over the domain" — across Indonesia there is
+            # no such thing as one sun angle for the domain. This says the
+            # country as a whole is outside the window, which at the extremes
+            # of the day it genuinely is.
             frozen_reason = (
-                f"sun too low over the domain ({mean_elev:.0f}°); {shown}"
+                f"no part of the country is inside the calibrated sun-angle "
+                f"window ({100 * calibrated:.0f}% of the domain); {shown}"
             )
         elif not lit_now:
-            # Sun is high enough but it is before local noon, which this
-            # product does not publish. Saying "night" at 09:00 with the sun
-            # at 53 degrees is worse than saying nothing.
             frozen_reason = (
-                f"mornings are not published — sun and satellite share a "
-                f"side before noon and the mask is not calibrated for it; "
-                f"{shown}. Live updates resume from "
-                f"{int(C.MIN_SCENE_LOCAL_HOUR):02d}:00 {C.DISPLAY_TZ_LABEL}"
+                f"scenes before {C.MIN_SCENE_LOCAL_HOUR:.0f}:00 "
+                f"{C.DISPLAY_TZ_LABEL} are not published; {shown}"
             )
         else:
             frozen_reason = (
@@ -267,10 +278,28 @@ def publish(outdir: Path) -> int:
         )
 
     outdir.mkdir(parents=True, exist_ok=True)
+    uncal = mask["uncalibrated"].astype(bool)
+    # Uncalibrated pixels are inside `obscured` — that is what stops them
+    # being advected — so the cloud layer must subtract them or every one of
+    # them is hatched twice, in two colours, at two spacings.
+    cloud_only = mask["obscured"].astype(bool) & ~uncal
     layers = {
         "now": save_png(smoke_png(mask["smoke"]), outdir / "smoke_now.png"),
         "obscured": save_png(
-            obscured_png(mask["obscured"]), outdir / "obscured.png"
+            hatch_png(
+                cloud_only,
+                C.OBSCURED_RGB, C.OBSCURED_ALPHA,
+                C.OBSCURED_HATCH_PERIOD, C.OBSCURED_HATCH_WIDTH,
+            ),
+            outdir / "obscured.png",
+        ),
+        "uncalibrated": save_png(
+            hatch_png(
+                uncal,
+                C.UNCALIBRATED_RGB, C.UNCALIBRATED_ALPHA,
+                C.UNCALIBRATED_HATCH_PERIOD, C.UNCALIBRATED_HATCH_WIDTH,
+            ),
+            outdir / "uncalibrated.png",
         ),
         "forecast": [],
     }
@@ -287,16 +316,6 @@ def publish(outdir: Path) -> int:
 
     firms = common.read_json(outdir / "firms.geojson") or {}
     meta = build_meta(scene_slot, mask, fc, layers, firms.get("properties"))
-    # Flag the extended, less-trustworthy end of the day on the page itself.
-    mean_elev_scene = float(mask["stats"].get("mean_solar_elevation", 90.0))
-    if mean_elev_scene < C.CAVEAT_BELOW_ELEVATION_DEG:
-        meta["low_sun_caveat"] = C.CAVEAT_LOW_SUN
-        log.info(
-            "scene sun elevation %.0f deg is below %.0f — publishing with the "
-            "low-sun caveat",
-            mean_elev_scene,
-            C.CAVEAT_BELOW_ELEVATION_DEG,
-        )
     over_water = float(mask["stats"].get("smoke_over_water_fraction", 0.0))
     if over_water > C.WATER_NOTE_ABOVE_FRACTION:
         pct = round(100 * over_water)

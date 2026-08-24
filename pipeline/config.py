@@ -295,14 +295,12 @@ CAVEAT_WATER = (
     "like thin smoke — treat it as unconfirmed."
 )
 
-CAVEAT_BELOW_ELEVATION_DEG = 50.0
-
-CAVEAT_LOW_SUN = (
-    "Sun below 50°: detections are less reliable than at midday. "
-    "Areas flagged over Sumatra in particular should not be read as smoke "
-    "without corroboration — they are more likely coastal or surface "
-    "effects. Kalimantan is the calibrated part of this map."
-)
+# CAVEAT_LOW_SUN and CAVEAT_BELOW_ELEVATION_DEG were removed when sun gating
+# went per pixel. The caveat said "Kalimantan is the calibrated part of this
+# map", which was true of a scene-level gate on a domain small enough to have
+# one sun angle. The uncalibrated hatch now shows exactly which pixels are
+# outside the range, on the map, which is better than a sentence saying that
+# some of them are.
 
 # satpy hands back raw AHI albedo, which falls as the sun drops. Left
 # uncorrected the smoke field appears to shrink every afternoon — an
