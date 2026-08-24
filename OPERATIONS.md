@@ -20,7 +20,7 @@ normal, which is why staleness is displayed rather than assumed.
 ```bash
 gh run list --workflow=pipeline.yml --limit 8
 curl -s "https://achmadrpahlevi.github.io/KalimantanWildfires/data/meta.json?cb=$(date +%s)" \
-  | python -c "import sys,json;m=json.load(sys.stdin);print(m['scene_local'],m['tz_label'],'| smoke %.2f%%'%(m['scene_stats']['smoke_fraction']*100),'| frozen',m['frozen'],'|',len(m['layers']['forecast']),'steps')"
+  | python -c "import sys,json;m=json.load(sys.stdin);print(m['scene_local'],m['tz_label'],'| smoke %.2f%% of visible'%(m['scene_stats']['smoke_fraction_of_visible']*100),'| frozen',m['frozen'],'|',len(m['layers']['forecast']),'steps')"
 ```
 
 Healthy looks like a scene timestamp within the last ~45 min during the window,

@@ -102,6 +102,15 @@ def classify(grids: dict, slot: datetime) -> dict:
 
     daylit = elev >= C.MIN_SOLAR_ELEVATION_DEG
 
+    # Two different questions that must not share a threshold. `daylit` asks
+    # whether the sensor can see this pixel at all. `calibrated` asks whether
+    # the thresholds below mean anything at this sun angle. On the Kalimantan
+    # domain the second was answered once for the whole scene; across
+    # Indonesia the answer differs by three hours of solar time from end to
+    # end, so it is answered per pixel here.
+    calibrated = elev >= C.MIN_SCENE_ELEVATION_DEG
+    uncalibrated = ~calibrated
+
     # Cloud: cold tops, blinding brightness, or bright in visible AND SWIR
     # at once — which smoke never is.
     cloud = np.where(
@@ -112,15 +121,23 @@ def classify(grids: dict, slot: datetime) -> dict:
         False,
     )
 
-    # Never claim to see through cloud, missing data or darkness.
-    obscured = (~valid) | (~daylit) | cloud
+    # Never claim to see through cloud, missing data, darkness, or a sun
+    # angle the thresholds were not tuned for.
+    obscured = (~valid) | (~daylit) | uncalibrated | cloud
 
     with np.errstate(invalid="ignore", divide="ignore"):
         blue_excess = b01 - b03
         vis_swir = b03 - b06  # the smoke discriminator
         btd = b11 - b14
 
-    usable = valid & daylit & ~cloud & (b13 >= C.SMOKE_B13_MIN_K) & (btd >= C.SMOKE_BTD_1114_MIN)
+    usable = (
+        valid
+        & daylit
+        & calibrated
+        & ~cloud
+        & (b13 >= C.SMOKE_B13_MIN_K)
+        & (btd >= C.SMOKE_BTD_1114_MIN)
+    )
 
     over_land = (
         (b01 >= C.SMOKE_B01_MIN)
@@ -155,14 +172,22 @@ def classify(grids: dict, slot: datetime) -> dict:
     density = np.where(smoke_bin, np.maximum(density, 0.15), 0.0).astype(np.float32)
 
     n = float(smoke_bin.size)
+    n_visible = float(max((~obscured).sum(), 1))
     stats = {
         "water_fraction": float(water.sum() / n),
         "valid_fraction": float(valid.sum() / n),
         "daylit_fraction": float(daylit.sum() / n),
+        "calibrated_fraction": float(calibrated.sum() / n),
+        "uncalibrated_fraction": float(uncalibrated.sum() / n),
         "cloud_fraction": float(cloud.sum() / n),
         "obscured_fraction": float(obscured.sum() / n),
         "clear_fraction": float((~obscured).sum() / n),
-        "smoke_fraction": float(smoke_bin.sum() / n),
+        # Against what was actually VISIBLE, not against the whole grid.
+        # Over the full country most pixels are out of window at any instant,
+        # so the old whole-grid denominator would drag this toward zero and
+        # make it incomparable to the 5-11% reference values measured on the
+        # Kalimantan domain. Renamed so nobody compares them by accident.
+        "smoke_fraction_of_visible": float(smoke_bin.sum() / n_visible),
         # How much of the detection sits over water. Shallow, turbid coastal
         # water is spectrally close to thin smoke in these bands and passes
         # both branches, so this is the number that says how much of the map
@@ -171,12 +196,19 @@ def classify(grids: dict, slot: datetime) -> dict:
             float((smoke_bin & water).sum() / max(smoke_bin.sum(), 1))
         ),
         "mean_solar_elevation": float(elev.mean()),
+        # The mean that means something. The whole-domain mean above sits
+        # below the calibration threshold even at the best moment of the day,
+        # because half the country is dark.
+        "mean_calibrated_elevation": (
+            float(elev[calibrated].mean()) if calibrated.any() else 0.0
+        ),
     }
 
     return {
         "smoke": density,
         "smoke_bin": smoke_bin.astype(np.uint8),
         "obscured": obscured.astype(np.uint8),
+        "uncalibrated": uncalibrated.astype(np.uint8),
         "clear": ((~obscured) & (~smoke_bin)).astype(np.uint8),
         "stats": stats,
     }
@@ -212,28 +244,40 @@ def save_mask(slot: datetime, result: dict) -> Path:
         smoke=result["smoke"],
         smoke_bin=result["smoke_bin"],
         obscured=result["obscured"],
+        uncalibrated=result["uncalibrated"],
         clear=result["clear"],
         stats=np.array([result["stats"]], dtype=object),
     )
     s = result["stats"]
     log.info(
-        "mask %s: smoke %.2f%% obscured %.1f%% clear %.1f%% sun %.0f deg",
+        "mask %s: smoke %.2f%% of visible, obscured %.1f%% "
+        "(%.1f%% out of sun-angle window), clear %.1f%%, calibrated sun %.0f deg",
         common.slot_id(slot),
-        100 * s["smoke_fraction"],
+        100 * s["smoke_fraction_of_visible"],
         100 * s["obscured_fraction"],
+        100 * s["uncalibrated_fraction"],
         100 * s["clear_fraction"],
-        s["mean_solar_elevation"],
+        s["mean_calibrated_elevation"],
     )
     return path
 
 
 def load_mask_npz(path: Path) -> dict:
     with np.load(path, allow_pickle=True) as data:
+        keys = set(data.files)
         return {
             "slot": str(data["slot"]),
             "smoke": data["smoke"],
             "smoke_bin": data["smoke_bin"],
             "obscured": data["obscured"],
+            # Masks written before per-pixel gating have no such layer. They
+            # folded nothing into obscured on this account, so an all-zero
+            # stand-in is the honest reading of what they claimed.
+            "uncalibrated": (
+                data["uncalibrated"]
+                if "uncalibrated" in keys
+                else np.zeros_like(data["obscured"])
+            ),
             "clear": data["clear"],
             "stats": dict(data["stats"][0]),
         }
@@ -301,7 +345,7 @@ def qa_frame(grids: dict, result: dict, slot: datetime):
         (4, 6),
         f"{common.slot_id(slot)} UTC  |  "
         f"{common.to_display_tz(slot):%H:%M} {C.DISPLAY_TZ_LABEL}   "
-        f"smoke {100 * s['smoke_fraction']:.2f}%  "
+        f"smoke {100 * s['smoke_fraction_of_visible']:.2f}% of visible  "
         f"obscured {100 * s['obscured_fraction']:.0f}%",
         fill=(230, 230, 235),
     )

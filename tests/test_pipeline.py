@@ -246,9 +246,16 @@ PATCH = (slice(100, 140), slice(100, 140))
 
 
 def test_clear_forest_is_neither_smoke_nor_obscured():
+    """At NOON the domain spans enough longitude that its far edges sit below
+    the calibration threshold even though the scene is clear everywhere: with
+    per-pixel gating (Task 3), whatever obscured_fraction remains must come
+    entirely from uncalibrated_fraction, not from cloud or missing data."""
     out = smoke_mask.classify(synthetic_scene(), NOON)
-    assert out["stats"]["smoke_fraction"] == 0.0
-    assert out["stats"]["obscured_fraction"] < 0.01
+    assert out["stats"]["smoke_fraction_of_visible"] == 0.0
+    assert out["stats"]["cloud_fraction"] == 0.0
+    assert out["stats"]["obscured_fraction"] == pytest.approx(
+        out["stats"]["uncalibrated_fraction"]
+    )
 
 
 def test_a_smoke_patch_is_detected_and_only_there():
@@ -348,6 +355,58 @@ def test_land_smoke_rules_still_apply_off_water():
     assert out["smoke_bin"][PATCH].all()
 
 
+def test_uncalibrated_pixels_are_obscured_and_never_smoke():
+    """Nothing outside the calibrated sun range is advected, so it must land
+    in obscured. PLAN.md non-negotiable #2."""
+    late = datetime(2026, 8, 21, 9, 30, tzinfo=UTC)  # 16:30 WIB
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), late)
+    uncal = out["uncalibrated"].astype(bool)
+    assert uncal.any(), "some of the country must be out of window at 16:30 WIB"
+    assert not (out["smoke_bin"].astype(bool) & uncal).any()
+    assert (out["obscured"].astype(bool) | ~uncal).all()
+
+
+def test_smoke_fraction_is_measured_against_what_was_visible():
+    """Over the whole country most pixels are out of window at any instant.
+    Dividing by the full grid makes the headline number collapse toward zero
+    and stop being comparable to anything."""
+    inside = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), inside)
+    s = out["stats"]
+    assert "smoke_fraction" not in s, "renamed, so nobody compares old numbers"
+    visible = (out["obscured"] == 0).sum()
+    assert s["smoke_fraction_of_visible"] == pytest.approx(
+        out["smoke_bin"].sum() / max(visible, 1)
+    )
+
+
+def test_mean_calibrated_elevation_ignores_the_dark_half_of_the_country():
+    inside = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), inside)
+    s = out["stats"]
+    assert s["mean_calibrated_elevation"] >= C.MIN_SCENE_ELEVATION_DEG
+    assert s["mean_calibrated_elevation"] > s["mean_solar_elevation"]
+
+
+def test_a_calibrated_scene_is_not_hatched_by_the_sun_rule_where_it_matters():
+    """Moved here from the old scene-gate test: a pixel inside the window
+    still gets a clean answer."""
+    inside = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), inside)
+    assert out["smoke_bin"][PATCH].all()
+
+
+def test_classify_and_calibrated_mask_agree():
+    """classify computes the calibration test inline rather than calling
+    common.calibrated_mask, to avoid recomputing solar geometry over 2.3M
+    cells in the hot path. Two definitions can drift; this is the tie."""
+    slot = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), slot)
+    assert np.array_equal(
+        out["uncalibrated"].astype(bool), ~common.calibrated_mask(slot)
+    )
+
+
 # --------------------------------------------------------------------------
 # Solar zenith correction — without it the mask shrinks every afternoon
 # --------------------------------------------------------------------------
@@ -406,7 +465,7 @@ def test_the_same_smoke_is_detected_early_and_late_in_the_day():
 def test_nothing_is_detected_at_night():
     midnight = datetime(2026, 8, 21, 17, 0, tzinfo=UTC)
     out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), midnight)
-    assert out["stats"]["smoke_fraction"] == 0.0
+    assert out["stats"]["smoke_fraction_of_visible"] == 0.0
     assert out["stats"]["obscured_fraction"] == 1.0
 
 

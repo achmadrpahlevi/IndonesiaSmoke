@@ -438,6 +438,15 @@ OBSCURED_ALPHA = 90
 OBSCURED_HATCH_PERIOD = 10  # pixels between hatch lines
 OBSCURED_HATCH_WIDTH = 2
 
+# "Outside the calibrated sun-angle range" is a different statement from
+# "cloud in the way", and drawing them the same way would tell the reader
+# they are the same problem. Cooler colour, wider spacing, so the two hatches
+# are distinguishable at a glance without a legend lookup.
+UNCALIBRATED_RGB = (120, 140, 175)
+UNCALIBRATED_ALPHA = 80
+UNCALIBRATED_HATCH_PERIOD = 16
+UNCALIBRATED_HATCH_WIDTH = 2
+
 # Below this daylit fraction the domain is treated as night: the last good
 # daylight product is frozen and labelled rather than overwritten.
 DAYLIGHT_MIN_FRACTION = 0.25

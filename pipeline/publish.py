@@ -313,10 +313,10 @@ def publish(outdir: Path) -> int:
     common.write_json(outdir / "meta.json", meta)
 
     log.info(
-        "published %s: %d forecast steps, %.2f%% smoke, %.0f%% obscured -> %s",
+        "published %s: %d forecast steps, %.2f%% smoke of visible, %.0f%% obscured -> %s",
         common.slot_id(scene_slot),
         len(layers["forecast"]),
-        100 * mask["stats"]["smoke_fraction"],
+        100 * mask["stats"]["smoke_fraction_of_visible"],
         100 * mask["stats"]["obscured_fraction"],
         outdir,
     )
