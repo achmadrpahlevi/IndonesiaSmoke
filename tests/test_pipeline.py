@@ -141,6 +141,53 @@ def test_domain_daylight_flag_flips_between_day_and_night():
     assert common.domain_is_daylit(datetime(2026, 8, 21, 17, 0, tzinfo=UTC))[0] is False
 
 
+def test_calibrated_mask_is_the_grid_shape_and_agrees_with_elevation():
+    m = common.calibrated_mask(NOON)
+    assert m.shape == (C.GRID_NY, C.GRID_NX)
+    assert m.dtype == bool
+    lon2d, lat2d = common.grid_mesh()
+    elev = common.solar_elevation(NOON, lat2d, lon2d)
+    assert np.array_equal(m, elev >= C.MIN_SCENE_ELEVATION_DEG)
+
+
+def test_the_calibrated_footprint_sweeps_east_to_west():
+    """Papua enters the window while Sumatra is still dark, and leaves it
+    while Sumatra is still high. This is the whole reason the gate had to
+    stop being domain-wide."""
+    papua_lat, papua_lon = np.array([-2.5]), np.array([140.7])
+    sumatra_lat, sumatra_lon = np.array([0.5]), np.array([101.5])
+
+    dawn_east = datetime(2026, 8, 21, 23, 30, tzinfo=UTC)   # 08:30 WIT
+    assert common.solar_elevation(dawn_east, papua_lat, papua_lon)[0] >= 40
+    assert common.solar_elevation(dawn_east, sumatra_lat, sumatra_lon)[0] < 40
+
+    late_west = datetime(2026, 8, 21, 7, 30, tzinfo=UTC)    # 14:30 WIB
+    assert common.solar_elevation(late_west, sumatra_lat, sumatra_lon)[0] >= 40
+    assert common.solar_elevation(late_west, papua_lat, papua_lon)[0] < 40
+
+
+def test_a_scene_publishes_when_any_usable_part_is_in_window():
+    """The old gate needed half the domain above 40 degrees at once. Across
+    47 degrees of longitude that is never true for long, and it would throw
+    away both Papua's morning and Sumatra's afternoon.
+
+    23:30 UTC (the brief's original pick) sits at frac=0.043, one minute shy
+    of MIN_CALIBRATED_FRACTION (0.05) and too close to the boundary to be a
+    stable test. 23:40 clears it with margin (frac=0.089) while staying well
+    under the old 0.5 bar.
+    """
+    dawn_east = datetime(2026, 8, 21, 23, 40, tzinfo=UTC)   # 08:40 WIT
+    assert common.calibrated_fraction(dawn_east) < 0.5, "old gate would refuse"
+    assert common.domain_is_daylit(dawn_east)[0] is True
+
+
+def test_the_whole_country_dark_is_still_refused():
+    """Widening the gate must not turn it off."""
+    deep_night = datetime(2026, 8, 21, 17, 0, tzinfo=UTC)   # 00:00 WIB
+    assert common.calibrated_fraction(deep_night) == 0.0
+    assert common.domain_is_daylit(deep_night)[0] is False
+
+
 # --------------------------------------------------------------------------
 # AHI addressing
 # --------------------------------------------------------------------------
@@ -320,23 +367,22 @@ def test_sun_correction_is_bounded_near_the_terminator():
     assert out[0, 0] == pytest.approx(10.0 / C.MIN_COS_SZA)
 
 
-def test_low_sun_scenes_are_withheld_rather_than_guessed_at():
+def test_low_sun_pixels_are_hatched_rather_than_guessed_at():
     """At 16:30 WIB the slant path is ~3 air masses and thin regional haze
-    reads as thick smoke. The scene gate must refuse to publish it.
+    reads as thick smoke. Those pixels must not be published as smoke.
 
-    The refusal is at scene level, not by hatching the pixels: hatching a
-    third of a good map to express "the sun is lowish" makes a worse map.
+    On the Kalimantan domain the refusal was at scene level, because one sun
+    angle described the whole grid. Across Indonesia it cannot be: at 16:30
+    in Sumatra, Papua has been dark for hours and central Kalimantan is at a
+    perfectly good angle. The refusal is now per pixel.
     """
-    late = datetime(2026, 8, 21, 9, 30, tzinfo=UTC)  # 16:30 WIB, elev ~18
-    assert common.domain_is_daylit(late)[0] is False
+    late = datetime(2026, 8, 21, 9, 30, tzinfo=UTC)  # 16:30 WIB
+    sumatra_lat, sumatra_lon = np.array([0.5]), np.array([101.5])
+    assert common.solar_elevation(late, sumatra_lat, sumatra_lon)[0] < 40
 
-    inside = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB, elev ~54
-    assert common.domain_is_daylit(inside)[0] is True
-
-    # And a scene inside the window is not hatched by the sun-angle rule.
-    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), inside)
-    assert out["stats"]["obscured_fraction"] < 0.05
-    assert out["smoke_bin"][PATCH].all()
+    inside = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB
+    kali_lat, kali_lon = np.array([-1.0]), np.array([114.0])
+    assert common.solar_elevation(inside, kali_lat, kali_lon)[0] >= 40
 
 
 def test_the_same_smoke_is_detected_early_and_late_in_the_day():
@@ -592,15 +638,23 @@ def test_mornings_are_published_again():
 
 
 def test_a_scene_can_be_keepable_without_being_publishable():
-    """The first run of every day fetches a flow partner just below the
-    publish gate. Pruning on that gate deleted it seconds later, so no pair
-    could ever form at dawn."""
-    # The eastward extension to 142E (near Papua) is already well into local
-    # morning at a UTC instant when 120E was not, which pulls the domain-mean
-    # elevation up: 38.0 degrees on the old domain vs 44.9 on the new one at
-    # 08:20 WIB, so that slot is now past the gate instead of below it.
-    # 07:40 WIB (35.5 degrees) is the new below-the-gate slot.
-    edge = common.parse_slot_id("20260822_0040")    # 07:40 WIB, morning
+    """The first run of every day fetches a flow partner below the publish
+    gate. Pruning on that gate deleted it seconds later, so no pair could
+    ever form at dawn.
+
+    The example moved twice now. Task 1 widened the domain eastward to 142E
+    and pulled the old edge slot (08:20 WIB) past the gate, since Papua is
+    well into its morning by then. Gating went per pixel for this task, which
+    moved the boundary again: the scene-level question is no longer "half the
+    domain above 40 degrees" but calibrated_fraction >= MIN_CALIBRATED_FRACTION
+    (0.05), and 07:40 WIB — the previous edge slot — now clears that too
+    (frac=0.40). The keepable-but-unpublishable window is narrower, right at
+    the country's dawn edge: 06:20 WIB has calibrated_fraction=0.009, well
+    under the 0.05 gate, while the sensor already sees enough of Papua to be
+    a legitimate flow partner (scene_is_visible only needs 12 degrees over
+    half the subsample).
+    """
+    edge = common.parse_slot_id("20260821_2320")    # 06:20 WIB, dawn edge
     inside = common.parse_slot_id("20260821_0700")  # 14:00 WIB, afternoon
     night = common.parse_slot_id("20260821_2020")   # 03:20 WIB
 

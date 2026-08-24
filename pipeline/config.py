@@ -237,6 +237,19 @@ MIN_SOLAR_ELEVATION_DEG = 12.0
 #    thresholds expressed as a function of air mass. See README "Known limits".
 MIN_SCENE_ELEVATION_DEG = 40.0
 
+# How much of the domain must be inside the calibrated range for the scene to
+# be published at all.
+#
+# On the Kalimantan domain this was effectively 0.5, applied to the whole
+# domain at once. Across 47 degrees of longitude — 3.1 hours of solar time —
+# that gate leaves a publishing window of roughly four hours and discards
+# both Papua's morning and Sumatra's afternoon. The sun test is now per pixel
+# (see common.calibrated_mask), so this only has to answer "is there anything
+# worth drawing", and the day runs from about 23:15 UTC to 09:00 UTC.
+#
+# Raise it to shorten the day at both ends without touching the physics.
+MIN_CALIBRATED_FRACTION = 0.05
+
 # Scenes below this elevation are published but carry a caveat on the page.
 # Between 40 and 50 degrees the mask still agrees with FIRMS (3.5x enrichment
 # against 3.8x at the validated point) but the domain smoke fraction roughly

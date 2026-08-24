@@ -199,27 +199,57 @@ def scene_is_visible(dt: datetime) -> bool:
     return float(np.mean(elev >= C.MIN_SOLAR_ELEVATION_DEG)) >= 0.5
 
 
-def domain_is_daylit(dt: datetime) -> tuple[bool, float]:
-    """(scene is inside the calibrated sun-angle range, mean solar elevation).
+def calibrated_mask(dt: datetime) -> np.ndarray:
+    """Per pixel: is this pixel inside the calibrated sun-angle range?
 
-    Deliberately the SCENE-level test, not the per-pixel visibility one. A
-    scene can be perfectly visible and still be outside the range the mask
-    thresholds were tuned in, in which case it is withheld rather than
-    published as a confident map of haze.
+    Full grid resolution, because smoke_mask uses it to classify pixels. The
+    scene-level questions below subsample instead — they only need a
+    fraction, and the full mesh is 2.3 million cells.
     """
+    lon2d, lat2d = grid_mesh()
+    return solar_elevation(dt, lat2d, lon2d) >= C.MIN_SCENE_ELEVATION_DEG
+
+
+def calibrated_fraction(dt: datetime) -> float:
+    """Share of the domain inside the calibrated range, subsampled."""
     lats = grid_lats()[::40]
     lons = grid_lons()[::40]
     lon2d, lat2d = np.meshgrid(lons, lats)
     elev = solar_elevation(dt, lat2d, lon2d)
-    frac_lit = float(np.mean(elev >= C.MIN_SCENE_ELEVATION_DEG))
+    return float(np.mean(elev >= C.MIN_SCENE_ELEVATION_DEG))
 
-    # Morning scenes are withheld regardless of how high the sun is: sun and
-    # sensor share a side before local noon, which is a geometry nothing here
-    # was calibrated against. See MIN_SCENE_LOCAL_HOUR.
+
+def domain_is_daylit(dt: datetime) -> tuple[bool, float]:
+    """(any usable part of the country is in window, mean solar elevation).
+
+    Still the SCENE-level test, and still not the per-pixel visibility one: a
+    scene can be perfectly visible and outside the range the thresholds were
+    tuned in. What changed with the domain is the meaning of "the scene". On
+    the Kalimantan grid, asking whether half the domain was above 40 degrees
+    was a fair proxy for the whole picture. Across Indonesia there is no such
+    thing as one sun angle for the domain, so this asks only whether there is
+    anything worth drawing and smoke_mask decides pixel by pixel.
+
+    The second element is the mean elevation over the WHOLE domain, kept for
+    logging. Do not gate on it: with half the country in darkness at any
+    instant it sits far below the calibration threshold even at the best
+    moment of the day.
+    """
+    frac_lit = calibrated_fraction(dt)
+
+    # Morning scenes were once withheld regardless of sun height, because sun
+    # and sensor share a side before local noon. The cause turned out to be
+    # the water test rather than the geometry, so this is disabled and left
+    # as a valve. See MIN_SCENE_LOCAL_HOUR.
     local_hour = to_display_tz(dt).hour + to_display_tz(dt).minute / 60.0
     afternoon = local_hour >= C.MIN_SCENE_LOCAL_HOUR
 
-    return (frac_lit >= 0.5 and afternoon), float(np.mean(elev))
+    lats = grid_lats()[::40]
+    lons = grid_lons()[::40]
+    lon2d, lat2d = np.meshgrid(lons, lats)
+    mean_elev = float(np.mean(solar_elevation(dt, lat2d, lon2d)))
+
+    return (frac_lit >= C.MIN_CALIBRATED_FRACTION and afternoon), mean_elev
 
 
 # --------------------------------------------------------------------------
