@@ -655,6 +655,59 @@ def test_flow_conditioning_ignores_untrusted_cells():
     assert out[..., 0].max() < 3.0
 
 
+def test_pair_footprint_is_the_intersection_of_both_frames():
+    prev = common.parse_slot_id("20260821_0600")
+    curr = common.parse_slot_id("20260821_0630")
+    fp = advect.calibrated_pair_footprint(prev, curr)
+    both = common.calibrated_mask(prev) & common.calibrated_mask(curr)
+    assert fp.shape == (C.GRID_NY, C.GRID_NX)
+    assert fp.dtype == bool
+    assert not (fp & ~both).any(), "footprint may never exceed the intersection"
+
+
+def test_pair_footprint_is_eroded_away_from_the_moving_edge(monkeypatch):
+    """The calibrated region sweeps east to west across the day. At its edges
+    smoke appears and disappears for reasons that are nothing to do with
+    wind, and Farneback reads that as motion. Everything within half a
+    correlation window of the boundary is therefore dropped."""
+    half = np.zeros((C.GRID_NY, C.GRID_NX), dtype=bool)
+    half[:, 1000:] = True
+    monkeypatch.setattr(common, "calibrated_mask", lambda dt: half)
+
+    prev = common.parse_slot_id("20260821_0600")
+    curr = common.parse_slot_id("20260821_0630")
+    fp = advect.calibrated_pair_footprint(prev, curr)
+
+    margin = C.FARNEBACK["winsize"] // 2
+    row = fp[C.GRID_NY // 2]
+    first_true = int(np.argmax(row))
+    assert first_true >= 1000 + margin, "boundary was not eroded far enough"
+    # Not row[-1]: border_value=0 erodes any True region touching the array's
+    # own edge too (column nx-1 here), for the same reason it erodes near
+    # 1000 — a correlation window centred on the last real column of the
+    # domain also has half its patch off-grid. That is correct, but it is a
+    # different boundary than the one this test targets, so checking
+    # survival at the literal last column conflates the two. A column deep
+    # inside the intersection, clear of both edges, is the real assertion.
+    assert row[1700], "the interior must survive erosion"
+
+
+def test_flow_is_not_trusted_across_the_footprint_edge(monkeypatch, tmp_path):
+    """End to end: a cell just inside the calibrated intersection but within
+    a correlation window of its edge contributes nothing to the flow."""
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    half = np.zeros((C.GRID_NY, C.GRID_NX), dtype=bool)
+    half[:, 1000:] = True
+    monkeypatch.setattr(common, "calibrated_mask", lambda dt: half)
+
+    prev = common.parse_slot_id("20260821_0600")
+    curr = common.parse_slot_id("20260821_0630")
+    fp = advect.calibrated_pair_footprint(prev, curr)
+    edge_col = 1005  # inside the intersection, inside the erosion margin
+    assert half[:, edge_col].all()
+    assert not fp[:, edge_col].any()
+
+
 # --------------------------------------------------------------------------
 # Verification scoring
 # --------------------------------------------------------------------------

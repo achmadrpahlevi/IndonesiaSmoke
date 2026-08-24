@@ -72,6 +72,42 @@ def condition_flow(flow: np.ndarray, trusted: np.ndarray) -> np.ndarray:
     return out
 
 
+def calibrated_pair_footprint(prev_slot: datetime, curr_slot: datetime) -> np.ndarray:
+    """Where flow between these two frames is worth believing.
+
+    The calibrated region sweeps east to west across the day, so between two
+    frames thirty minutes apart its edges have moved. Smoke entering or
+    leaving through a moving boundary looks exactly like smoke moving, and
+    Farneback has no way to tell the difference — it would report a confident
+    westward drift at the edges of the map on every single cycle.
+
+    smoke_mask already folds uncalibrated pixels into obscured, so the raw
+    intersection is handled by the `trusted` obscured check in forecast().
+    What this adds is the margin: Farneback correlates over a winsize
+    window, so a cell within half a window of the boundary has part of its
+    correlation patch sitting in the region that just changed state. Those
+    cells are dropped too.
+
+    Cost: binary_erosion with a small (3,3) structure iterated `margin`
+    times over the full 975x2375 grid measured ~20-70 ms on this machine —
+    negligible next to the ~2 minute end-to-end cycle. A single (31,31)
+    structuring element in one iteration was tried as the "obviously
+    cheaper" alternative and was actually ~13x SLOWER (no separable fast
+    path for a large kernel), so the naive iterated-small-kernel form is
+    kept.
+    """
+    from scipy.ndimage import binary_erosion
+
+    both = common.calibrated_mask(prev_slot) & common.calibrated_mask(curr_slot)
+    margin = max(1, int(C.FARNEBACK["winsize"]) // 2)
+    return binary_erosion(
+        both,
+        structure=np.ones((3, 3), dtype=bool),
+        iterations=margin,
+        border_value=0,
+    )
+
+
 def flow_diagnostics(flow: np.ndarray, weight: np.ndarray, dt_minutes: float) -> dict:
     """Median speed/bearing over the cells that matter."""
     sel = weight > 0
@@ -227,11 +263,14 @@ def forecast(target: datetime | None = None) -> dict | None:
     }
 
     raw = compute_flow(prev, curr)
+    footprint = calibrated_pair_footprint(t_prev, t_curr)
     trusted = (
         (prev["obscured"] == 0)
         & (curr["obscured"] == 0)
         & ((prev["smoke_bin"] > 0) | (curr["smoke_bin"] > 0))
+        & footprint
     )
+    quality["footprint_cells"] = int(footprint.sum())
     flow = condition_flow(raw, trusted)
     diag = flow_diagnostics(flow, trusted, dt_minutes)
     quality.update(diag)
