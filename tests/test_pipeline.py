@@ -693,19 +693,104 @@ def test_pair_footprint_is_eroded_away_from_the_moving_edge(monkeypatch):
 
 
 def test_flow_is_not_trusted_across_the_footprint_edge(monkeypatch, tmp_path):
-    """End to end: a cell just inside the calibrated intersection but within
-    a correlation window of its edge contributes nothing to the flow."""
-    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
-    half = np.zeros((C.GRID_NY, C.GRID_NX), dtype=bool)
-    half[:, 1000:] = True
-    monkeypatch.setattr(common, "calibrated_mask", lambda dt: half)
+    """End to end through forecast(): a cell just inside the calibrated
+    intersection but within a correlation window of its edge contributes
+    nothing to the published flow, even though Farneback genuinely reads
+    motion there.
 
-    prev = common.parse_slot_id("20260821_0600")
-    curr = common.parse_slot_id("20260821_0630")
-    fp = advect.calibrated_pair_footprint(prev, curr)
-    edge_col = 1005  # inside the intersection, inside the erosion margin
-    assert half[:, edge_col].all()
-    assert not fp[:, edge_col].any()
+    Two synthetic frames, thirty minutes apart:
+      * a real moving smoke feature deep in the interior (col ~1680, far
+        from any edge) -- this is the "the machinery actually ran" proof.
+      * a second, isolated feature sitting entirely inside the eroded
+        margin band next to the calibrated boundary (~1004, well clear of
+        both the boundary at 1000 and the trusted region starting at
+        1000 + winsize//2 = 1015) that ALSO moves between frames, so raw
+        Farneback reports confident motion for it too -- exactly the
+        "smoke crossing a moving boundary looks like smoke moving" case
+        this task exists to suppress.
+
+    common.calibrated_mask is patched to differ between the two slots (the
+    boundary itself moves, as it does across a real day), so this also
+    exercises the intersection, not just a static mask.
+    """
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    advect.log = common.setup_logging(False)
+
+    ny, nx = C.GRID_NY, C.GRID_NX
+    prev_slot = common.parse_slot_id("20260821_0600")
+    curr_slot = prev_slot + timedelta(minutes=30)
+
+    def fake_calibrated_mask(dt):
+        calib = np.zeros((ny, nx), dtype=bool)
+        if dt == prev_slot:
+            calib[:, 1000:] = True
+        elif dt == curr_slot:
+            calib[:, 950:] = True  # the boundary has swept west by curr
+        else:
+            raise AssertionError(f"unexpected calibrated_mask call for {dt}")
+        return calib
+
+    monkeypatch.setattr(common, "calibrated_mask", fake_calibrated_mask)
+    # Intersection of the two half-planes above is cols >= 1000; erosion by
+    # winsize // 2 = 15 pushes the trusted edge to col 1015.
+    margin = C.FARNEBACK["winsize"] // 2
+    assert 1000 + margin == 1015
+
+    def blob(cy, cx, sigma):
+        y = np.arange(ny, dtype=np.float32)[:, None]
+        x = np.arange(nx, dtype=np.float32)[None, :]
+        return np.exp(-(((y - cy) ** 2 + (x - cx) ** 2) / (2 * sigma ** 2)))
+
+    # Interior feature: a broad blob shifted 5 cells east, nowhere near any
+    # boundary (col 1680 is > 1015 and far short of the grid's own edge).
+    interior_prev = blob(430, 1680, 25)
+    interior_curr = blob(430, 1685, 25)
+
+    # Edge feature: a small, isolated blob shifted 3 cells east, entirely
+    # inside the eroded band [1000, 1014]. sigma=2.5 keeps its footprint
+    # (>0.05 out past col 1010) well clear of the trusted boundary at 1015,
+    # so it cannot pick up any flow by diffusion from a trusted neighbour --
+    # this test is about the effect of the edge feature's OWN excluded
+    # measurement, not about smoothing bleed from somewhere else.
+    edge_prev = blob(200, 1004, 2.5)
+    edge_curr = blob(200, 1007, 2.5)
+
+    prev_smoke = np.clip(interior_prev + edge_prev, 0, 1).astype(np.float32)
+    curr_smoke = np.clip(interior_curr + edge_curr, 0, 1).astype(np.float32)
+
+    # The raw flow machinery, run on exactly the arrays that will go into
+    # the masks below: proves Farneback really does read the edge feature
+    # as motion when nothing stops it -- so a later assertion of zero there
+    # is a real effect of trusted/footprint, not a scenario where nothing
+    # was ever going to be nonzero.
+    raw = advect.compute_flow({"smoke": prev_smoke}, {"smoke": curr_smoke})
+    assert abs(raw[200, 1004, 0]) > 1.0, "the edge feature must read as real motion raw"
+
+    for slot, smoke in ((prev_slot, prev_smoke), (curr_slot, curr_smoke)):
+        np.savez_compressed(
+            common.mask_path(slot),
+            slot=common.slot_id(slot),
+            smoke=smoke,
+            smoke_bin=(smoke > 0.05).astype(np.uint8),
+            obscured=np.zeros((ny, nx), np.uint8),
+            clear=np.ones((ny, nx), np.uint8),
+            stats=np.array([{"clear_fraction": 0.9}], dtype=object),
+        )
+
+    fc = advect.forecast()
+    assert fc is not None
+    assert not fc["quality"]["flow_rejected"], "the interior speed must be plausible"
+
+    flow = fc["flow"]
+    # Edge band: excluded by the footprint, and isolated enough that no
+    # trusted neighbour's value can diffuse in either -- must come out at
+    # exactly zero, not merely small.
+    edge_band = flow[195:206, 998:1013, 0]
+    assert (edge_band == 0).all(), "flow must not cross the eroded footprint edge"
+
+    # Interior: proves the run above is not just a case where the whole
+    # field is zero -- real, trusted motion survives condition_flow.
+    assert abs(flow[430, 1683, 0]) > 0.5, "genuine interior motion must survive"
 
 
 # --------------------------------------------------------------------------
