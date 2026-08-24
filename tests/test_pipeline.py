@@ -1343,7 +1343,14 @@ def test_obscured_overlay_is_hatched_not_solid():
 def test_obscured_and_uncalibrated_are_drawn_as_separate_layers():
     """Cloud and 'we cannot judge this sun angle' are different statements.
     Drawing them with one layer tells the reader they are the same problem,
-    and double-hatches every uncalibrated pixel."""
+    and double-hatches every uncalibrated pixel.
+
+    This only checks that hatch_png draws an already-correct mask correctly.
+    It hands hatch_png a mask this test computed itself with `& ~uncal`, so
+    it never touches the subtraction inside publish() that is supposed to
+    produce that mask. See
+    test_publish_does_not_double_hatch_uncalibrated_pixels below for a test
+    that drives publish() itself and would catch that line regressing."""
     ny, nx = 40, 40
     obscured = np.zeros((ny, nx), dtype=np.uint8)
     uncal = np.zeros((ny, nx), dtype=np.uint8)
@@ -1359,3 +1366,72 @@ def test_obscured_and_uncalibrated_are_drawn_as_separate_layers():
     a = np.array(cloud_only)[..., 3]
     assert a[:, :20].any(), "cloud must be hatched"
     assert not a[:, 20:].any(), "uncalibrated must not be hatched twice"
+
+
+def test_publish_does_not_double_hatch_uncalibrated_pixels(tmp_path, monkeypatch):
+    """Drives publish.publish() end to end, unlike the test above. The
+    subtraction that keeps cloud and uncalibrated hatching apart lives at
+    `cloud_only = mask["obscured"].astype(bool) & ~uncal` inside publish()
+    itself; hatch_png just draws whatever mask it is handed. A regression
+    that dropped `& ~uncal` there would leave every prior test in this file
+    green, because none of them call publish() — this is deliberately the
+    one that would catch it: every uncalibrated pixel at the edges of the
+    day would come out hatched twice, in two colours, at two spacings, on
+    the live map."""
+    from pipeline import publish
+    from PIL import Image
+
+    monkeypatch.setattr(C, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(common, "utcnow", lambda: NOON)
+    publish.log = common.setup_logging(False)
+
+    ny, nx = C.GRID_NY, C.GRID_NX
+    obscured = np.zeros((ny, nx), dtype=np.uint8)
+    uncal = np.zeros((ny, nx), dtype=np.uint8)
+
+    # A region that is cloud AND uncalibrated (the case that must not double
+    # hatch) plus a region that is cloud only (the case that must still draw,
+    # so the first assertion cannot pass simply because the cloud layer is
+    # empty everywhere).
+    overlap = (slice(100, 150), slice(100, 150))
+    cloud_only_region = (slice(400, 450), slice(400, 450))
+    obscured[overlap] = 1
+    uncal[overlap] = 1
+    obscured[cloud_only_region] = 1
+
+    np.savez_compressed(
+        common.mask_path(NOON),
+        slot=common.slot_id(NOON),
+        smoke=np.zeros((ny, nx), np.float32),
+        smoke_bin=np.zeros((ny, nx), np.uint8),
+        obscured=obscured,
+        uncalibrated=uncal,
+        clear=(1 - obscured).astype(np.uint8),
+        stats=np.array(
+            [
+                {
+                    "daylit_fraction": 1.0,
+                    "smoke_fraction_of_visible": 0.0,
+                    "obscured_fraction": float(obscured.mean()),
+                    "smoke_over_water_fraction": 0.0,
+                }
+            ],
+            dtype=object,
+        ),
+    )
+
+    outdir = tmp_path / "site"
+    assert publish.publish(outdir) == 0
+
+    obscured_alpha = np.array(Image.open(outdir / "obscured.png"))[..., 3]
+    uncalibrated_alpha = np.array(Image.open(outdir / "uncalibrated.png"))[..., 3]
+
+    assert not obscured_alpha[overlap].any(), (
+        "cloud layer drew inside a region that is only uncalibrated, not "
+        "cloudy — the & ~uncal subtraction in publish() is missing"
+    )
+    assert uncalibrated_alpha[overlap].any(), "uncalibrated layer must draw there"
+    assert obscured_alpha[cloud_only_region].any(), (
+        "cloud layer must still draw its own region, or the first assertion "
+        "above would pass vacuously with an empty cloud layer"
+    )
