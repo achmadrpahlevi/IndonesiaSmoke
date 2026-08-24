@@ -357,11 +357,27 @@ def test_land_smoke_rules_still_apply_off_water():
 
 def test_uncalibrated_pixels_are_obscured_and_never_smoke():
     """Nothing outside the calibrated sun range is advected, so it must land
-    in obscured. PLAN.md non-negotiable #2."""
-    late = datetime(2026, 8, 21, 9, 30, tzinfo=UTC)  # 16:30 WIB
-    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), late)
+    in obscured. PLAN.md non-negotiable #2.
+
+    Must be a genuinely MIXED scene — some of the country calibrated, some
+    not — or the conjunction check below degenerates to vacuously true. An
+    earlier version of this test used 09:30 UTC (16:30 WIB), measured via
+    common.calibrated_mask at exactly 0.0 calibrated_fraction: the WHOLE
+    country was out of window, not "some" of it, so uncal.any() and the
+    conjunction passed trivially without proving anything about a mixed
+    scene. 09:00 UTC was checked and rejected too: 1.1% calibrated, too
+    thin a sliver to trust as "mixed" rather than noise. 07:00 UTC measures
+    61.9% calibrated / 38.1% uncalibrated — both sides substantial — so the
+    guard assertions below pin that down and this slot is used instead.
+    """
+    mixed = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB
+    calibrated_frac = float(common.calibrated_mask(mixed).mean())
+    assert calibrated_frac > 0.5, "must be a real calibrated majority, not a sliver"
+    assert calibrated_frac < 0.9, "must leave a real uncalibrated remainder too"
+
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), mixed)
     uncal = out["uncalibrated"].astype(bool)
-    assert uncal.any(), "some of the country must be out of window at 16:30 WIB"
+    assert uncal.any() and (~uncal).any(), "scene must be genuinely mixed"
     assert not (out["smoke_bin"].astype(bool) & uncal).any()
     assert (out["obscured"].astype(bool) | ~uncal).all()
 
