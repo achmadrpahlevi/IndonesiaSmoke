@@ -27,24 +27,29 @@ SITE_DATA_DIR = Path(os.environ.get("KALIMSMOKE_OUT", REPO_ROOT / "site" / "data
 # Domain grid — fixed plate carree, ~2 km
 # --------------------------------------------------------------------------
 
-# Extends west to 100 E so the domain covers Singapore, Peninsular Malaysia
-# and the Riau/Sumatra fire belt — the question "does the haze reach
-# Singapore" cannot be answered by a grid that stops at Borneo. This costs no
-# extra download: AHI segments divide the disk by scan line (latitude), so a
-# wider longitude range is a bigger crop of files we already fetch.
-LON_MIN, LON_MAX = 100.0, 120.0
-LAT_MIN, LAT_MAX = -5.0, 8.0
+# All of Indonesia, Sabang to Merauke and Rote to Miangas, plus the
+# countries its haze actually reaches: Singapore, Peninsular Malaysia,
+# Sarawak, Sabah, Brunei, Timor-Leste and the PNG border.
+#
+# The 47 degrees of longitude is close to free. AHI segments divide the disk
+# by scan line, so a wider longitude range is a bigger crop of files already
+# being downloaded. Only the southward extension to 11.5S buys a segment:
+# segments_for_bbox returns [4,5,6,7,8] here against [4,5,6,7] before, so 35
+# files instead of 28, about 300 MB instead of 240 MB.
+LON_MIN, LON_MAX = 94.5, 142.0
+LAT_MIN, LAT_MAX = -11.5, 8.0
 GRID_RES_DEG = 0.02  # ~2.2 km at the equator
 
 # Rows run north -> south (image convention). Values are pixel centres.
-GRID_NX = int(round((LON_MAX - LON_MIN) / GRID_RES_DEG))  # 600
-GRID_NY = int(round((LAT_MAX - LAT_MIN) / GRID_RES_DEG))  # 650
+GRID_NX = int(round((LON_MAX - LON_MIN) / GRID_RES_DEG))  # 2375
+GRID_NY = int(round((LAT_MAX - LAT_MIN) / GRID_RES_DEG))  # 975
 
-# Nearest-neighbour radius for resampling AHI -> grid, metres. The western
-# edge is ~40 degrees off the sub-satellite point, where a 2 km nadir pixel
-# is stretched to 3-4 km, so the radius has to exceed the nadir spacing or
-# that edge comes back full of holes.
-RESAMPLE_RADIUS_M = 5000
+# Nearest-neighbour radius for resampling AHI -> grid, metres. At 94.5 E the
+# viewing zenith angle is about 60 degrees, so a 2 km nadir pixel is
+# stretched past 5 km and the old 5000 m radius left holes along the western
+# edge. Verified by counting the NaN fraction west of 97 E — see the QA step
+# in Task 10.
+RESAMPLE_RADIUS_M = 8000
 
 # --------------------------------------------------------------------------
 # Himawari-9 source
@@ -72,7 +77,7 @@ AHI_DATASETS = {b: b for b in AHI_BANDS}
 # equator, which lands mid-disk. Computed properly in fetch_ahi.segments_for_bbox;
 # this is the fallback when the geometry calculation is unavailable.
 AHI_TOTAL_SEGMENTS = 10
-AHI_FALLBACK_SEGMENTS = [5, 6, 7]
+AHI_FALLBACK_SEGMENTS = [4, 5, 6, 7, 8]
 
 # AHI full-disk cadence, minutes. Scenes appear at :00, :10, :20 ...
 AHI_SLOT_MINUTES = 10
@@ -424,12 +429,13 @@ OBSCURED_HATCH_WIDTH = 2
 # daylight product is frozen and labelled rather than overwritten.
 DAYLIGHT_MIN_FRACTION = 0.25
 
-# Where the map opens. Widening the domain west to Singapore would otherwise
-# shove Borneo off to the right, so the initial view is centred on Kalimantan
-# and extended east by however much was added in the west. The result keeps
-# Kalimantan in the middle with Singapore and Malaysia visible on the left.
-FOCUS_LON = 114.0
-FOCUS_LAT = 0.5
+# Where the map opens. On the old domain this was deliberately NOT the middle
+# of the grid: FOCUS_LON pulled the view back onto Borneo so the westward
+# extension to Singapore did not shove the subject off to the right. A
+# full-country domain has no single subject to pull towards, so this is now
+# simply the centre of the data and view_bounds() is the data bounds.
+FOCUS_LON = 118.25
+FOCUS_LAT = -1.75
 
 # Indonesian western time, for the header.
 DISPLAY_TZ_OFFSET_HOURS = 7

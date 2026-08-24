@@ -26,7 +26,7 @@ import numpy as np
 from . import advect as advect_mod
 from . import common
 from . import config as C
-from .smoke_mask import load_mask_npz
+from .smoke_mask import load_mask_npz, mask_shape_ok
 
 log = None
 
@@ -178,6 +178,10 @@ def newest_daylight_mask(masks):
         # selecting on daylit_fraction alone put a 30.70% morning map on the
         # site with frozen=true, which labelled it without withholding it.
         if not common.domain_is_daylit(slot)[0]:
+            continue
+        if not mask_shape_ok(path):
+            if log is not None:
+                log.warning("%s is from a different grid — ignoring", path.name)
             continue
         mask = load_mask_npz(path)
         if float(mask["stats"].get("daylit_fraction", 0.0)) >= C.DAYLIGHT_MIN_FRACTION:

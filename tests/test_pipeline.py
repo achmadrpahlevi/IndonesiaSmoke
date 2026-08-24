@@ -47,23 +47,34 @@ def test_rows_run_north_to_south():
     assert lats[0] > lats[-1]
 
 
-def test_domain_reaches_singapore_and_peninsular_malaysia():
-    """The product claims to answer 'does the haze reach Singapore'. It can
-    only do that if Singapore is inside the grid."""
+def test_domain_reaches_the_whole_country_and_its_haze_neighbours():
+    """The name claims all of Indonesia. The grid has to back that up, and
+    still contain the downwind cities the product was originally built for."""
     for name, lat, lon in [
+        ("Sabang", 5.89, 95.32),
+        ("Merauke", -8.49, 140.40),
+        ("Rote", -10.75, 123.12),
+        ("Miangas", 5.56, 126.58),
+        ("Jayapura", -2.53, 140.72),
+        ("Kupang", -10.18, 123.61),
         ("Singapore", 1.35, 103.82),
         ("Kuala Lumpur", 3.14, 101.69),
         ("Pontianak", -0.02, 109.34),
-        ("Palangkaraya", -2.21, 113.92),
     ]:
         assert C.LON_MIN <= lon <= C.LON_MAX, name
         assert C.LAT_MIN <= lat <= C.LAT_MAX, name
 
 
-def test_opening_view_is_centred_on_kalimantan():
-    (south, west), (north, east) = common.view_bounds()
-    assert (west + east) / 2 == pytest.approx(C.FOCUS_LON)
-    assert (south + north) / 2 == pytest.approx(C.FOCUS_LAT)
+def test_grid_dimensions_match_the_new_extent():
+    assert C.GRID_NX == 2375
+    assert C.GRID_NY == 975
+
+
+def test_opening_view_is_the_data_itself():
+    """The mirroring trick existed to keep Borneo centred after the westward
+    extension to 100E. On a full-country domain it produces a view nearly 200
+    degrees wide, so the opening view is simply the data bounds."""
+    assert common.view_bounds() == common.leaflet_bounds()
 
 
 def test_opening_view_still_contains_all_the_data():
@@ -140,8 +151,9 @@ def test_segments_are_a_contiguous_in_range_block():
     assert 1 <= segs[0] <= segs[-1] <= C.AHI_TOTAL_SEGMENTS
 
 
-def test_equatorial_domain_lands_mid_disk():
-    """Kalimantan straddles the equator, so it must not be a polar segment."""
+def test_the_new_extent_still_lands_mid_disk():
+    """Papua sits under the sub-satellite point and Sabang is far west, but
+    the whole domain must still be an equatorial band of segments."""
     segs = fetch_ahi.segments_for_bbox(margin=0)
     assert 3 <= segs[0] and segs[-1] <= 8
 
@@ -392,7 +404,8 @@ def test_view_zenith_is_zero_at_the_sub_satellite_point():
 
     nadir = rayleigh.view_zenith(np.array([0.0]), np.array([C.AHI_SATELLITE_LON]))
     assert nadir[0] == pytest.approx(0.0, abs=0.1)
-    # Our domain is well off nadir; the western edge is the far one.
+    # Sabang is ~60 degrees off the sub-satellite point; Papua is under it.
+    # This is the single largest new source of cross-domain inconsistency.
     west = rayleigh.view_zenith(np.array([0.0]), np.array([C.LON_MIN]))
     east = rayleigh.view_zenith(np.array([0.0]), np.array([C.LON_MAX]))
     assert west > east > 0
@@ -582,7 +595,12 @@ def test_a_scene_can_be_keepable_without_being_publishable():
     """The first run of every day fetches a flow partner just below the
     publish gate. Pruning on that gate deleted it seconds later, so no pair
     could ever form at dawn."""
-    edge = common.parse_slot_id("20260822_0120")    # 08:20 WIB, morning
+    # The eastward extension to 142E (near Papua) is already well into local
+    # morning at a UTC instant when 120E was not, which pulls the domain-mean
+    # elevation up: 38.0 degrees on the old domain vs 44.9 on the new one at
+    # 08:20 WIB, so that slot is now past the gate instead of below it.
+    # 07:40 WIB (35.5 degrees) is the new below-the-gate slot.
+    edge = common.parse_slot_id("20260822_0040")    # 07:40 WIB, morning
     inside = common.parse_slot_id("20260821_0700")  # 14:00 WIB, afternoon
     night = common.parse_slot_id("20260821_2020")   # 03:20 WIB
 
@@ -652,6 +670,24 @@ def test_a_blind_night_mask_is_never_used_for_flow(tmp_path, monkeypatch):
     (t_prev, _), (t_curr, _) = advect.find_pair()
     assert t_prev == NOON
     assert t_curr == NOON + timedelta(minutes=30)
+
+
+def test_mask_from_a_different_grid_is_rejected(tmp_path):
+    """Changing the domain invalidates every cached npz. Without this guard
+    a restored Actions cache broadcasts a (650, 1000) mask against a
+    (975, 2375) grid and fails somewhere far away from the cause."""
+    path = tmp_path / "mask_20260821_0700.npz"
+    np.savez_compressed(
+        path,
+        slot="20260821_0700",
+        smoke=np.zeros((650, 1000), dtype=np.float32),
+        smoke_bin=np.zeros((650, 1000), dtype=np.uint8),
+        obscured=np.zeros((650, 1000), dtype=np.uint8),
+        clear=np.zeros((650, 1000), dtype=np.uint8),
+        stats=np.array([{"clear_fraction": 1.0}], dtype=object),
+    )
+    assert smoke_mask.mask_shape_ok(path) is False
+    assert advect.mask_is_usable(path) is False
 
 
 def test_a_perfect_forecast_scores_csi_one(tmp_path, monkeypatch):
@@ -890,7 +926,7 @@ def test_publish_skips_a_night_mask_in_favour_of_the_last_daylight_one(
     night = NOON + timedelta(hours=8)
 
     def write(slot, daylit):
-        ny, nx = 4, 4
+        ny, nx = C.GRID_NY, C.GRID_NX
         np.savez_compressed(
             common.mask_path(slot),
             slot=common.slot_id(slot),
@@ -965,7 +1001,7 @@ def test_publish_selects_on_the_scene_gate_not_the_pixel_fraction(
     morning = common.parse_slot_id("20260821_2020")   # 03:20 WIB, night
     afternoon = common.parse_slot_id("20260821_0700")  # 14:00 WIB
     for slot in (afternoon, morning):
-        ny, nx = 4, 4
+        ny, nx = C.GRID_NY, C.GRID_NX
         np.savez_compressed(
             common.mask_path(slot), slot=common.slot_id(slot),
             smoke=np.zeros((ny, nx), np.float32),
@@ -986,7 +1022,9 @@ def test_publish_reports_nothing_when_no_mask_ever_saw_daylight(
     from pipeline import publish
 
     monkeypatch.setattr(C, "STATE_DIR", tmp_path)
-    ny, nx = 4, 4
+    # Real grid shape: this must be rejected on daylit_fraction, not shape,
+    # or the test would pass for the wrong reason.
+    ny, nx = C.GRID_NY, C.GRID_NX
     np.savez_compressed(
         common.mask_path(NOON),
         slot=common.slot_id(NOON),

@@ -239,6 +239,22 @@ def load_mask_npz(path: Path) -> dict:
         }
 
 
+def mask_shape_ok(path: Path) -> bool:
+    """Is this cached mask on the current grid?
+
+    The Actions cache restores state/ across runs, so a domain change hands
+    the pipeline npz files of the wrong shape. Left unguarded they broadcast
+    against the new grid and fail somewhere far from the cause. Rejecting
+    them here means the run simply has no usable history, which every stage
+    already knows how to survive.
+    """
+    try:
+        with np.load(path, allow_pickle=True) as data:
+            return tuple(data["smoke"].shape) == (C.GRID_NY, C.GRID_NX)
+    except (OSError, ValueError, KeyError):
+        return False
+
+
 # --------------------------------------------------------------------------
 # QA rendering — this is what you compare against BMKG
 # --------------------------------------------------------------------------

@@ -64,8 +64,8 @@ def grid_area_def():
     from pyresample.geometry import AreaDefinition
 
     return AreaDefinition(
-        area_id="kalimantan",
-        description="Kalimantan smoke domain, plate carree",
+        area_id="indonesia",
+        description="Indonesia smoke domain, plate carree",
         proj_id="eqc",
         projection={"proj": "longlat", "datum": "WGS84"},
         width=C.GRID_NX,
@@ -80,18 +80,16 @@ def leaflet_bounds() -> list[list[float]]:
 
 
 def view_bounds() -> list[list[float]]:
-    """Opening view: the data bounds mirrored about the focus point.
+    """Opening view. Identical to the data bounds.
 
-    Fitting the raw data bounds would centre the map on the middle of the
-    grid, which after the westward extension is the Java Sea. Mirroring about
-    Kalimantan keeps the subject centred while still showing everything to
-    its west.
+    This used to mirror the data bounds about FOCUS_LON so that Borneo stayed
+    centred after the domain was extended west to 100 E. Across the full
+    country that mirroring produces an opening view close to 200 degrees
+    wide. Kept as a function because meta.json publishes it and the page
+    reads it; the indirection costs nothing and leaves room to re-centre
+    later without another meta.json change.
     """
-    west = min(C.LON_MIN, 2 * C.FOCUS_LON - C.LON_MAX)
-    east = max(C.LON_MAX, 2 * C.FOCUS_LON - C.LON_MIN)
-    south = min(C.LAT_MIN, 2 * C.FOCUS_LAT - C.LAT_MAX)
-    north = max(C.LAT_MAX, 2 * C.FOCUS_LAT - C.LAT_MIN)
-    return [[south, west], [north, east]]
+    return leaflet_bounds()
 
 
 # --------------------------------------------------------------------------

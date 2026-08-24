@@ -157,12 +157,20 @@ def integrate(
 # --------------------------------------------------------------------------
 
 def mask_is_usable(path: Path) -> bool:
-    """Could this mask actually see anything?
+    """Could this mask actually see anything, and is it on this grid?
 
     Night masks are 100% obscured. Pairing one with the first daylight frame
     would have Farneback match darkness against a lit scene, which is exactly
     the situation at dawn every morning.
+
+    The shape test catches cached state left over from a different domain.
     """
+    from .smoke_mask import mask_shape_ok
+
+    if not mask_shape_ok(path):
+        if log is not None:
+            log.warning("%s is from a different grid — ignoring", path.name)
+        return False
     try:
         with np.load(path, allow_pickle=True) as data:
             stats = dict(data["stats"][0])
