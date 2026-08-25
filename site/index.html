@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>KalimSmoke — Kalimantan smoke, now and next 3 hours</title>
-<meta name="description" content="Indicative short-range smoke movement over Kalimantan from Himawari-9, with NASA FIRMS hotspots. Daytime only.">
+<title>IndonesiaSmoke — Indonesian wildfire smoke, now and next 3 hours</title>
+<meta name="description" content="Indicative short-range smoke movement over Indonesia from Himawari-9, with NASA FIRMS hotspots. Daytime only.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
@@ -67,6 +67,7 @@
   }
   #title { font-weight: 650; letter-spacing: -.01em; }
   #title small { font-weight: 450; color: var(--ink-muted); }
+  #localtime { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
   #status {
     display: inline-flex; align-items: center; gap: 5px;
     font-variant-numeric: tabular-nums; font-weight: 550;
@@ -137,6 +138,10 @@
     background-image: repeating-linear-gradient(45deg,
       #96969f 0 2px, transparent 2px 7px);
   }
+  .swatch.uncal {
+    background-image: repeating-linear-gradient(45deg,
+      rgb(120, 140, 175) 0 2px, transparent 2px 7px);
+  }
   .swatch.hotspot {
     border: none; border-radius: 50%; width: 11px; height: 11px;
     background: var(--hotspot); box-shadow: 0 0 0 3px rgba(208,59,59,.25);
@@ -184,11 +189,12 @@
 </head>
 <body>
 
-<div id="map" role="application" aria-label="Map of smoke over Kalimantan"></div>
+<div id="map" role="application" aria-label="Map of smoke over Indonesia"></div>
 
 <header id="header" class="panel">
-  <div id="title">KalimSmoke <small>· Kalimantan</small></div>
+  <div id="title">IndonesiaSmoke <small>· Indonesia</small></div>
   <div id="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="statustext">loading…</span></div>
+  <div id="localtime"></div>
   <div id="notice"></div>
 </header>
 
@@ -199,11 +205,13 @@
   <div class="ramp"></div>
   <div class="ramp-labels"><span>thin</span><span>thick</span></div>
   <div class="key"><span class="swatch obscured"></span> Obscured by cloud</div>
+  <div class="key"><span class="swatch uncal"></span> Sun angle outside calibration</div>
   <div class="key"><span class="swatch hotspot"></span><span id="fire-key">Fire hotspot, 24 h</span></div>
   <div class="key" id="key-wind" hidden><span class="swatch wind">↑</span> 850 hPa wind</div>
   <div id="layers">
     <label><input type="checkbox" id="tg-smoke" checked> Smoke</label>
     <label><input type="checkbox" id="tg-obscured" checked> Cloud hatching</label>
+    <label><input type="checkbox" id="tg-uncal" checked> Sun-angle hatching</label>
     <label><input type="checkbox" id="tg-fires" checked> Hotspots</label>
     <label id="lb-wind" hidden><input type="checkbox" id="tg-wind"> Wind arrows</label>
     <label><input type="checkbox" id="tg-labels" checked> City labels</label>
@@ -274,6 +282,7 @@
     frames: [],        // {minutes, layer, label, validLabel}
     index: 0,
     obscured: null,
+    uncal: null,
     fires: L.layerGroup(),
     wind: L.layerGroup(),
     windMeta: null,
@@ -286,6 +295,7 @@
     status: document.getElementById("status"),
     statusText: document.getElementById("statustext"),
     notice: document.getElementById("notice"),
+    localtime: document.getElementById("localtime"),
     timebar: document.getElementById("timebar"),
     slider: document.getElementById("slider"),
     play: document.getElementById("play"),
@@ -325,8 +335,8 @@
     if (!m) return;
     var age = minutesSince(m.scene_utc);
     var limit = m.stale_after_minutes || 90;
-    var tz = m.tz_label || "WIB";
-    var clock = localTime(m.scene_utc, m.tz_offset_hours != null ? m.tz_offset_hours : 7);
+    var tz = m.tz_label || "UTC";
+    var clock = localTime(m.scene_utc, m.tz_offset_hours != null ? m.tz_offset_hours : 0);
     var cls = "", word = "";
 
     if (age === null) {
@@ -340,6 +350,12 @@
     }
     el.status.className = cls;
     el.statusText.textContent = "Last updated " + clock + " " + tz + " · " + word;
+    // Indonesia spans three zones, so the UTC stamp above is the honest one
+    // and this saves everyone the arithmetic.
+    el.localtime.textContent =
+      "= " + localTime(m.scene_utc, 7) + " WIB · " +
+      localTime(m.scene_utc, 8) + " WITA · " +
+      localTime(m.scene_utc, 9) + " WIT";
 
     var notes = [];
     if (m.frozen) {
@@ -352,9 +368,6 @@
     }
     if (m.water_caveat) {
       notes.push(m.water_caveat);
-    }
-    if (m.low_sun_caveat) {
-      notes.push(m.low_sun_caveat);
     }
     if (m.firms && m.firms.below_frp_floor) {
       notes.push(m.firms.below_frp_floor.toLocaleString() +
@@ -385,7 +398,7 @@
   function buildFrames(m) {
     clearFrames();
     var bounds = m.bounds;
-    var tzOff = m.tz_offset_hours != null ? m.tz_offset_hours : 7;
+    var tzOff = m.tz_offset_hours != null ? m.tz_offset_hours : 0;
 
     function addFrame(file, minutes, label, valid) {
       if (!file) return;
@@ -411,6 +424,15 @@
         pane: "obscPane",
         interactive: false,
         alt: "Areas obscured by cloud"
+      }).addTo(map);
+    }
+
+    if (state.uncal) { map.removeLayer(state.uncal); state.uncal = null; }
+    if (m.layers && m.layers.uncalibrated) {
+      state.uncal = L.imageOverlay(bust(m.layers.uncalibrated), bounds, {
+        opacity: document.getElementById("tg-uncal").checked ? 1 : 0,
+        interactive: false,
+        alt: "Areas where the sun angle is outside the calibrated range"
       }).addTo(map);
     }
 
@@ -441,7 +463,7 @@
     var f = state.frames[state.index];
     el.slider.value = String(state.index);
     el.lead.firstChild.nodeValue = f.label === "Now" ? "Now" : "Forecast " + f.label;
-    el.valid.textContent = "valid " + f.valid + " " + (state.meta.tz_label || "WIB");
+    el.valid.textContent = "valid " + f.valid + " " + (state.meta.tz_label || "UTC");
   }
 
   function setPlaying(on) {
@@ -619,6 +641,9 @@
   document.getElementById("tg-smoke").addEventListener("change", function () { show(state.index); });
   document.getElementById("tg-obscured").addEventListener("change", function (e) {
     if (state.obscured) state.obscured.setOpacity(e.target.checked ? 1 : 0);
+  });
+  document.getElementById("tg-uncal").addEventListener("change", function (e) {
+    if (state.uncal) state.uncal.setOpacity(e.target.checked ? 1 : 0);
   });
   document.getElementById("tg-fires").addEventListener("change", function (e) {
     if (e.target.checked) state.fires.addTo(map); else map.removeLayer(state.fires);
