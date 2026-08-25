@@ -429,8 +429,15 @@
 
     if (state.uncal) { map.removeLayer(state.uncal); state.uncal = null; }
     if (m.layers && m.layers.uncalibrated) {
+      // Same pane as the cloud hatch. Without it this overlay defaults to
+      // z-index 400 and sits UNDER smokePane (410). The three "now" layers
+      // are pixel-disjoint, so that was invisible for them — but the six
+      // forecast frames share smokePane and are advected, and smoke crossing
+      // the calibrated boundary overlaps the uncalibrated hatch by roughly
+      // 3 cells (~7 km). Small, and drawn in the wrong order.
       state.uncal = L.imageOverlay(bust(m.layers.uncalibrated), bounds, {
         opacity: document.getElementById("tg-uncal").checked ? 1 : 0,
+        pane: "obscPane",
         interactive: false,
         alt: "Areas where the sun angle is outside the calibrated range"
       }).addTo(map);

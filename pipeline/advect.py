@@ -199,6 +199,20 @@ def mask_is_usable(path: Path) -> bool:
     would have Farneback match darkness against a lit scene, which is exactly
     the situation at dawn every morning.
 
+    The test is cloud WITHIN the calibrated area, not clear sky over the whole
+    grid. MIN_CLEAR_FRACTION = 0.20 was tuned as "how much cloud is too much
+    cloud" on a domain that was entirely calibrated. Since uncalibrated pixels
+    are folded into `obscured`, clear_fraction <= calibrated_fraction always,
+    so reading clear_fraction here quietly turned that constant into a second
+    sun-window gate on top of MIN_CALIBRATED_FRACTION. Measured against real
+    solar geometry at typical tropical cloud cover, that cost the first ~90
+    and last ~50 minutes of every publishing day: both masks rejected,
+    forecast() returning None, and a map with no slider. The effective cloud
+    tolerance also drifted through the day, which nobody chose.
+
+    Masks written before this stat existed fall back to clear_fraction, which
+    is what they meant: on a fully calibrated domain the two are identical.
+
     The shape test catches cached state left over from a different domain.
     """
     from .smoke_mask import mask_shape_ok
@@ -212,7 +226,10 @@ def mask_is_usable(path: Path) -> bool:
             stats = dict(data["stats"][0])
     except (OSError, ValueError, KeyError, IndexError):
         return False
-    return float(stats.get("clear_fraction", 0.0)) >= C.MIN_CLEAR_FRACTION
+    clear_of_calibrated = float(
+        stats.get("clear_fraction_of_calibrated", stats.get("clear_fraction", 0.0))
+    )
+    return clear_of_calibrated >= C.MIN_CLEAR_FRACTION
 
 
 def find_pair(target: datetime | None = None):
@@ -253,11 +270,21 @@ def forecast(target: datetime | None = None) -> dict | None:
     dt_minutes = common.minutes_between(t_curr, t_prev)
 
     clear_fraction = float(curr["stats"]["clear_fraction"])
+    clear_of_calibrated = float(
+        curr["stats"].get("clear_fraction_of_calibrated", clear_fraction)
+    )
     quality = {
         "pair": [common.slot_id(t_prev), common.slot_id(t_curr)],
         "pair_gap_minutes": round(dt_minutes, 1),
         "clear_fraction": round(clear_fraction, 3),
+        # Reported next to it because they now differ by most of the domain,
+        # and it is the second one that decided this pair was usable.
+        "clear_fraction_of_calibrated": round(clear_of_calibrated, 3),
         "flow_rejected": False,
+        # Never set true from here any more. A forecast that exists at all
+        # has already passed the widespread-cloud test in mask_is_usable, so
+        # the refusal case has no forecast object to carry it — publish
+        # builds that quality block itself. See where the old branch sat.
         "suppressed": False,
         "reason": "",
     }
@@ -285,16 +312,16 @@ def forecast(target: datetime | None = None) -> dict | None:
         quality["flow_rejected"] = True
         quality["reason"] = "implausible flow field, forecast frozen"
 
-    if clear_fraction < C.MIN_CLEAR_FRACTION:
-        log.warning(
-            "only %.0f%% of the domain is clear — suppressing the forecast",
-            100 * clear_fraction,
-        )
-        quality["suppressed"] = True
-        quality["reason"] = (
-            f"only {100 * clear_fraction:.0f}% of the domain is visible; "
-            "forecast withheld"
-        )
+    # A widespread-cloud suppression branch used to sit here, testing
+    # MIN_CLEAR_FRACTION a second time. It could never fire: find_pair has
+    # already run mask_is_usable over both masks against the same constant,
+    # so by this line the test is structurally false and its message — "only
+    # X% of the domain is visible; forecast withheld" — could never reach the
+    # page. Removed rather than re-thresholded: inventing a stricter second
+    # constant would be a tunable nobody calibrated. PLAN.md's widespread-
+    # cloud rule (§6) is still enforced, one layer up, where the measurement
+    # actually happens; publish.no_forecast_reason turns that refusal into
+    # the sentence the reader sees.
 
     smoke_steps, flag_steps = integrate(
         curr["smoke"], curr["obscured"], flow, dt_minutes
@@ -310,13 +337,14 @@ def forecast(target: datetime | None = None) -> dict | None:
     }
     save_forecast(t_curr, out)
     log.info(
-        "forecast %s: %s at %.1f m/s from %s, %d steps%s",
+        "forecast %s: %s at %.1f m/s from %s, %d steps "
+        "(%.0f%% of the calibrated area clear of cloud)",
         common.slot_id(t_curr),
         "FROZEN" if quality["flow_rejected"] else "advecting",
         diag["median_speed_ms"],
         diag["bearing_from_deg"],
         len(C.FORECAST_STEPS),
-        " (SUPPRESSED)" if quality["suppressed"] else "",
+        100 * clear_of_calibrated,
     )
     return out
 

@@ -250,6 +250,23 @@ def test_the_new_extent_still_lands_mid_disk():
     assert 3 <= segs[0] and segs[-1] <= 8
 
 
+def test_the_live_segment_set_covers_the_southern_band():
+    """The production path is margin=1, and margin is what adds 4 and 8.
+
+    The test above pins margin=0 ([5, 6, 7]) against a loose range, which no
+    fetch ever uses. The failure that matters is losing segment 8: the
+    southern band then resamples to NaN, NaN counts as obscured, and obscured
+    renders in the CLOUD hatch — so Rote, Kupang and southern Timor would
+    read as permanently cloudy, indefinitely, with the suite green.
+
+    Exact list, not a range. The extension to 11.5 S is the only part of the
+    widened domain that costs a segment (config.py: 35 files instead of 28),
+    so a silent drop back to [4, 5, 6, 7] is exactly the regression to catch.
+    """
+    assert fetch_ahi.segments_for_bbox() == [4, 5, 6, 7, 8]
+    assert fetch_ahi.segments_for_bbox() == list(C.AHI_FALLBACK_SEGMENTS)
+
+
 def test_object_keys_use_the_right_resolution_token_per_band():
     keys = fetch_ahi.wanted_keys(NOON, [5], ["B01", "B03", "B13"])
     assert keys[0].endswith("HS_H09_20260821_0600_B01_FLDK_R10_S0510.DAT.bz2")
@@ -488,21 +505,47 @@ def test_sun_correction_is_bounded_near_the_terminator():
 
 
 def test_low_sun_pixels_are_hatched_rather_than_guessed_at():
-    """At 16:30 WIB the slant path is ~3 air masses and thin regional haze
-    reads as thick smoke. Those pixels must not be published as smoke.
+    """At a low sun angle the slant path runs to ~3 air masses and thin
+    regional haze reads as thick smoke. Those pixels must come back hatched,
+    and must never be published as smoke.
 
     On the Kalimantan domain the refusal was at scene level, because one sun
-    angle described the whole grid. Across Indonesia it cannot be: at 16:30
-    in Sumatra, Papua has been dark for hours and central Kalimantan is at a
-    perfectly good angle. The refusal is now per pixel.
-    """
-    late = datetime(2026, 8, 21, 9, 30, tzinfo=UTC)  # 16:30 WIB
-    sumatra_lat, sumatra_lon = np.array([0.5]), np.array([101.5])
-    assert common.solar_elevation(late, sumatra_lat, sumatra_lon)[0] < 40
+    angle described the whole grid. Across Indonesia it cannot be: at 14:00
+    WIB, Sumatra is at 68 degrees and Papua — three hours of solar time
+    further east — is at 24. The refusal is now per pixel, so this asserts
+    the property at ONE slot: Papua comes back obscured, Sumatra does not.
 
-    inside = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)  # 14:00 WIB
-    kali_lat, kali_lon = np.array([-1.0]), np.array([114.0])
-    assert common.solar_elevation(inside, kali_lat, kali_lon)[0] >= 40
+    An earlier version of this test called classify zero times — its whole
+    body was two solar_elevation lookups — so deleting `uncalibrated` from
+    the obscured union in smoke_mask, the single line that hatches low-sun
+    pixels at all, left it green.
+
+    Papua is deliberately left as clear forest rather than painted with
+    smoke. At 24 degrees the sun-zenith correction lifts SMOKE_VALUES' B01 of
+    22 to ~52, past CLOUD_B01_MIN, so a smoke patch there would be obscured
+    as cloud whatever the sun rule did and would prove nothing.
+    """
+    slot = datetime(2026, 8, 21, 7, 0, tzinfo=UTC)   # 14:00 WIB
+    papua = (slice(500, 560), slice(2240, 2320))     # ~2-3 S, 139-141 E
+
+    lon2d, lat2d = common.grid_mesh()
+    elev = common.solar_elevation(slot, lat2d, lon2d)
+    # Papua is VISIBLE here (23.6-25.4 deg, well above the 12 deg floor) but
+    # outside the calibrated window, so "obscured" over it can only have come
+    # from the sun-angle rule — not from darkness, cloud or missing data.
+    assert elev[papua].max() < C.MIN_SCENE_ELEVATION_DEG
+    assert elev[papua].min() > C.MIN_SOLAR_ELEVATION_DEG
+    assert elev[PATCH].min() >= C.MIN_SCENE_ELEVATION_DEG
+
+    out = smoke_mask.classify(synthetic_scene(p=(PATCH, SMOKE_VALUES)), slot)
+
+    assert out["uncalibrated"][papua].all()
+    assert out["obscured"][papua].all(), "outside the window must be hatched"
+    assert not out["smoke_bin"][papua].any(), "and never published as smoke"
+
+    # Same scene, same instant, inside the window: a clean answer.
+    assert not out["obscured"][PATCH].any()
+    assert out["smoke_bin"][PATCH].all()
 
 
 def test_the_same_smoke_is_detected_early_and_late_in_the_day():
@@ -1099,6 +1142,86 @@ def test_obscured_hotspots_are_not_scored():
     feats = [{"geometry": {"coordinates": [float(lons[10]), float(lats[10])]}}]
     _, _, scored = validate.enrichment(smoke, obscured, feats)
     assert scored == 0, "cannot score a fire we could not see"
+
+
+def test_enrichment_is_one_at_chance_when_only_part_of_the_domain_is_visible():
+    """The denominator must be the population that was actually scored.
+
+    enrichment() skips hotspots over obscured pixels, so the smoke rate it
+    divides by has to be measured over the same unobscured pixels. Dividing
+    by the whole-grid rate inflates the answer by exactly 1/clear_fraction.
+    That was ~1.7x on the Kalimantan domain; here uncalibrated pixels are
+    folded into obscured, so clear_fraction sits at 0.05-0.35 for most of the
+    publishing day and the inflation is 3-20x. This scene has 30% visible, so
+    a chance-level mask would report 3.3x against a cutover gate of "above
+    3x".
+
+    The other two enrichment tests use an all-clear and an all-obscured
+    array. On those the two denominators coincide, or nothing is scored at
+    all, so neither can tell them apart — swapping the denominator left the
+    whole 104-test suite green. This one fails against the old denominator.
+    """
+    from pipeline import validate
+
+    ny, nx = C.GRID_NY, C.GRID_NX
+    visible_cols = int(nx * 0.30)
+    obscured = np.ones((ny, nx), bool)
+    obscured[:, :visible_cols] = False
+
+    # smoke_bin is structurally a subset of ~obscured in the real product, so
+    # the synthetic one must be too — and it covers exactly half of what is
+    # visible, which is what makes a hit rate of 0.5 chance.
+    smoke = np.zeros((ny, nx), bool)
+    smoke[: ny // 2, :visible_cols] = True
+
+    assert smoke.mean() == pytest.approx(0.15, abs=0.01), "whole-grid rate"
+    assert smoke[~obscured].mean() == pytest.approx(0.5, abs=0.01), "of visible"
+
+    lons, lats = common.grid_lons(), common.grid_lats()
+    col = visible_cols // 2
+    feats = [  # one on smoke, one off it, both inside the visible strip
+        {"geometry": {"coordinates": [float(lons[col]), float(lats[ny // 4])]}},
+        {"geometry": {"coordinates": [float(lons[col]), float(lats[3 * ny // 4])]}},
+    ]
+    e, hits, scored = validate.enrichment(smoke, obscured, feats)
+    assert (scored, hits) == (2, 1)
+    assert e == pytest.approx(1.0, rel=0.05), "chance must report chance"
+
+
+def test_enrichment_can_be_asked_about_one_region():
+    """The cutover gate is per region — Sumatra, Kalimantan, Sulawesi, Papua.
+
+    A region's fires must be scored against that region's own smoke rate.
+    Against the domain-wide rate a region with no smoke at all would inherit
+    everyone else's denominator and report something.
+    """
+    from pipeline import validate
+
+    ny, nx = C.GRID_NY, C.GRID_NX
+    lon2d, lat2d = common.grid_mesh()
+    a, b, c, d = validate.REGIONS["Kalimantan"]
+    box = (lon2d > a) & (lon2d < b) & (lat2d > c) & (lat2d < d)
+
+    obscured = np.zeros((ny, nx), bool)
+    # Half of Kalimantan is smoke; everywhere else is solid smoke, so the
+    # whole-domain rate is nothing like the regional one.
+    smoke = np.ones((ny, nx), bool)
+    smoke[box] = False
+    smoke[box & (lat2d > (c + d) / 2)] = True
+
+    mid_lon = float((a + b) / 2)
+    feats = [
+        {"geometry": {"coordinates": [mid_lon, float((c + d) / 2 + 1.0)]}},  # hit
+        {"geometry": {"coordinates": [mid_lon, float((c + d) / 2 - 1.0)]}},  # miss
+    ]
+    e, hits, scored = validate.enrichment(smoke, obscured, feats, region=box)
+    assert (scored, hits) == (2, 1)
+    assert smoke[box].mean() == pytest.approx(0.5, abs=0.02)
+    assert e == pytest.approx(1.0, rel=0.05)
+
+    # Same fires, domain-wide denominator: the answer stops meaning anything.
+    e_domain, _, _ = validate.enrichment(smoke, obscured, feats)
+    assert e_domain < 0.8
 
 
 # --------------------------------------------------------------------------

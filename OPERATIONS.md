@@ -145,20 +145,35 @@ Scores the mask against FIRMS hotspots, which share no physics with it. It
 counts **only fires acquired at or before the scene**, because scoring against
 the full 24 h list charges a morning scene for fires that had not started.
 
-Reference values measured 2026-08-21/22 **on the Kalimantan domain**, before
-the smoke fraction was re-based on visible area. Kept because the enrichment
-figures are still the benchmark — they share no physics with the mask — but
-the smoke percentages are not comparable to what the current product reports
-(`smoke_fraction_of_visible` is measured against visible area, not the whole
-grid, and the grid itself is now 3.6× larger):
+Reference values measured 2026-08-21/22 **on the Kalimantan domain**. Neither
+column is comparable to what the current code prints, for two separate
+reasons:
 
-| scene | smoke (old denominator) | enrichment |
+| scene | smoke (old denominator) | enrichment (old denominator) |
 |---|---|---|
 | 08:50 WIB | 7.73% | 6.0× |
 | 14:00 WIB | 5.19% | 4.2× |
 
+- **The smoke percentages** were measured against the whole grid.
+  `smoke_fraction_of_visible` is measured against visible area, and the grid
+  itself is now 3.6× larger.
+- **The enrichment figures** were computed by dividing the hotspot-on-smoke
+  rate over *unobscured* pixels by the smoke rate over the *whole grid* —
+  two different populations. That inflated every figure by exactly
+  1/`clear_fraction`: roughly 1.7× on the Kalimantan domain, and 3–20× here,
+  because uncalibrated pixels are now folded into `obscured`. The code was
+  corrected to use one population for both, so **the numbers above are
+  roughly 1.7× too high** and the current product will report lower figures
+  for the same quality of map. Do not read a drop against this table as a
+  regression, and do not carry these values forward as a pass mark.
+
 **Enrichment near 1× means the map is no better than chance** and something is
-wrong. Above ~3× is healthy — that part of the benchmark still holds.
+wrong; that reading is unchanged, because chance is 1× under either
+denominator. **The "above ~3×" cutover gate has no measured reference on this
+domain yet** — under the old denominator a chance-level mask reported 4.95× at
+20% clear, so the gate was certifiable by a map that did nothing. The
+per-region table `validate` now prints is the thing to measure the gate
+against, once it has been run on real scenes.
 
 ---
 

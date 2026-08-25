@@ -43,6 +43,18 @@ REGIONS = {
     "Malacca Strait": (100.5, 104.0, 1.0, 5.0),
 }
 
+# The four the cutover gate is written against (docs/superpowers/specs,
+# OPERATIONS.md "acceptance gate"). Marked in the per-region table so the
+# person deciding whether to cut over does not have to cross-reference.
+GATE_REGIONS = ("Sumatra", "Kalimantan", "Sulawesi", "Papua")
+
+# Below this many scored hotspots the enrichment ratio is not reported as a
+# number at all. Three points in Papua can put any figure on the screen, and
+# a confident "8.4x" derived from three fires is worse than saying nothing:
+# the gate is read by a human who cannot see n unless it is printed. Same
+# floor the domain-wide NOTE already uses.
+MIN_SCORED_FOR_ENRICHMENT = 30
+
 
 def acq_time(feature: dict):
     raw = (feature.get("properties") or {}).get("acq_utc")
@@ -54,21 +66,37 @@ def acq_time(feature: dict):
         return None
 
 
-def enrichment(smoke, obscured, features):
-    """(enrichment, hits, scored) for a set of hotspots."""
+def enrichment(smoke, obscured, features, region=None):
+    """(enrichment, hits, scored) for a set of hotspots.
+
+    `region` is an optional boolean grid mask. It restricts BOTH the hotspots
+    counted and the smoke rate they are compared against, which is the only
+    way a per-region number means anything: scoring Papua's fires against the
+    whole country's smoke rate answers a question nobody asked.
+
+    THE DENOMINATOR IS THE POPULATION ACTUALLY SCORED. Hotspots over obscured
+    pixels are skipped, so chance has to be measured over the unobscured
+    pixels too. Dividing by the whole-grid smoke rate inflates the ratio by
+    exactly 1/clear_fraction — ~1.7x on the Kalimantan domain, where the
+    whole grid was calibrated, but 3-20x here, because uncalibrated pixels
+    are now folded into `obscured` and clear_fraction sits at 0.05-0.35 for
+    most of the publishing day. At 0.20 clear a chance-level mask (true
+    0.99x) reported 4.95x, and the cutover gate is "above 3x".
+    """
     lons, lats = common.grid_lons(), common.grid_lats()
+    scoreable = ~obscured if region is None else (~obscured & region)
     hits = scored = 0
     for f in features:
         lon, lat = f["geometry"]["coordinates"]
         i = int(np.argmin(np.abs(lons - lon)))
         j = int(np.argmin(np.abs(lats - lat)))
-        if obscured[j, i]:
+        if not scoreable[j, i]:
             continue
         scored += 1
         hits += bool(smoke[j, i])
-    if not scored:
+    if not scored or not scoreable.any():
         return float("nan"), 0, 0
-    frac = max(float(smoke.mean()), 1e-9)
+    frac = max(float(smoke[scoreable].mean()), 1e-9)
     return (hits / scored) / frac, hits, scored
 
 
@@ -106,24 +134,63 @@ def main(argv=None) -> int:
     feats = gj["features"]
     prior = [f for f in feats if (t := acq_time(f)) and t <= slot]
 
-    print("scene %s (%s %s)  smoke %.2f%%  obscured %.1f%%" % (
+    # "of visible", not of the grid. The whole-grid smoke percentage was
+    # renamed to smoke_fraction_of_visible everywhere else in this branch,
+    # for the reason smoke_mask.classify gives: across 47 degrees of
+    # longitude most of the grid is out of window at any instant, so the
+    # whole-grid figure collapses toward zero and is not comparable to the
+    # 5-11% reference values. This is also the denominator enrichment uses.
+    visible = ~obscured
+    smoke_of_visible = (
+        100 * float(smoke[visible].mean()) if visible.any() else float("nan")
+    )
+    print("scene %s (%s %s)  smoke %.2f%% of visible  obscured %.1f%%" % (
         common.slot_id(slot), common.to_display_tz(slot).strftime("%H:%M"),
-        C.DISPLAY_TZ_LABEL, 100 * smoke.mean(), 100 * obscured.mean()))
+        C.DISPLAY_TZ_LABEL, smoke_of_visible, 100 * obscured.mean()))
     e_all, _, n_all = enrichment(smoke, obscured, feats)
     e_pri, h_pri, n_pri = enrichment(smoke, obscured, prior)
     print("  hotspot enrichment, fires before this scene : %.1fx  (%d/%d)"
           % (e_pri, h_pri, n_pri))
     print("  same against the full 24 h list             : %.1fx  (n=%d)"
           % (e_all, n_all))
-    if n_pri < 30:
+    if n_pri < MIN_SCORED_FOR_ENRICHMENT:
         print("  NOTE: only %d prior fires, so that figure is noisy" % n_pri)
 
+    # Per region, because that is what the cutover gate asks for. Enrichment
+    # here is against fires that preceded the scene, same as the headline
+    # figure above — the 24 h list charges a scene for fires that had not
+    # started yet.
     lon2d, lat2d = common.grid_mesh()
-    print("  smoke by region (unobscured):")
+    print("")
+    print("  by region, fires before this scene "
+          "(* = acceptance-gate region):")
+    print("    %-17s %10s %12s %9s" % ("", "smoke", "enrichment", "hotspots"))
     for name, (a, b, c, d) in REGIONS.items():
-        sel = (lon2d > a) & (lon2d < b) & (lat2d > c) & (lat2d < d) & ~obscured
-        if sel.any():
-            print("    %-16s %5.1f%%" % (name, 100 * smoke[sel].mean()))
+        box = (lon2d > a) & (lon2d < b) & (lat2d > c) & (lat2d < d)
+        label = ("* " if name in GATE_REGIONS else "  ") + name
+        sel = box & visible
+        if not sel.any():
+            # Routine, not an error: at any instant a third of the country is
+            # outside the calibrated window and therefore obscured.
+            print("    %-17s %10s %12s %9s"
+                  % (label, "-", "not visible", "-"))
+            continue
+        e, _, n = enrichment(smoke, obscured, prior, region=box)
+        smoke_pct = "%.1f%%" % (100 * smoke[sel].mean())
+        if n < MIN_SCORED_FOR_ENRICHMENT:
+            # Not a number. Three hotspots can produce any ratio at all, and
+            # the gate is read by a human deciding whether to cut over.
+            print("    %-17s %10s %12s %9d"
+                  % (label, smoke_pct, "too few", n))
+        else:
+            print("    %-17s %10s %11.1fx %9d" % (label, smoke_pct, e, n))
+    print("  Enrichment is measured against the smoke rate over that "
+          "region's own")
+    print("  visible pixels, so regions are comparable with each other and "
+          "with")
+    print("  the domain-wide figures above. Fewer than %d scored hotspots "
+          "reports" % MIN_SCORED_FOR_ENRICHMENT)
+    print("  the count instead of a ratio.")
     return 0
 
 

@@ -87,9 +87,40 @@ def iso(dt) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def no_forecast_reason(stats: dict) -> str:
+    """Why the page has no slider, in words a reader can act on.
+
+    This is where the widespread-cloud message lives now. It used to sit in
+    advect.forecast() behind a test that could never be true, because
+    find_pair had already applied the same constant to both masks — so the
+    only sentence the page could ever show was the bare "no forecast".
+
+    Distinguishing the two cases costs one number that the mask already
+    carries: too much cloud over the part of the country the thresholds
+    apply to, against simply not having a second scene yet (dawn, a missed
+    slot, a gap over MAX_FLOW_PAIR_GAP_MINUTES).
+    """
+    clear_of_calibrated = float(
+        stats.get(
+            "clear_fraction_of_calibrated", stats.get("clear_fraction", 1.0)
+        )
+    )
+    if clear_of_calibrated < C.MIN_CLEAR_FRACTION:
+        return (
+            f"only {100 * clear_of_calibrated:.0f}% of the area inside the "
+            f"calibrated sun-angle window is clear of cloud, below the "
+            f"{100 * C.MIN_CLEAR_FRACTION:.0f}% needed to measure motion"
+        )
+    return "no second scene close enough in time to measure motion from"
+
+
 def build_meta(scene_slot, mask, fc, layers, firms_props) -> dict:
     stats = mask["stats"]
-    quality = dict(fc["quality"]) if fc else {"suppressed": True, "reason": "no forecast"}
+    quality = (
+        dict(fc["quality"])
+        if fc
+        else {"suppressed": True, "reason": no_forecast_reason(stats)}
+    )
     now = common.utcnow()
 
     forecast_index = []
@@ -244,9 +275,23 @@ def publish(outdir: Path) -> int:
             # no such thing as one sun angle for the domain. This says the
             # country as a whole is outside the window, which at the extremes
             # of the day it genuinely is.
+            #
+            # The threshold and the current value are stated as DIFFERENT
+            # things. This branch is entered on calibrated < 0.05 and then
+            # renders the non-zero remainder, so the old wording read "no
+            # part of the country is inside the calibrated sun-angle window
+            # (4% of the domain)" — and at the boundary "(5% of the domain)",
+            # which is the gate's own floor, i.e. a level at which the map
+            # should be publishing. It appears twice a day, every day, at
+            # exactly the moment someone is asking why the map stopped.
+            #
+            # One decimal on the current value, none on the threshold: at
+            # calibrated = 0.049 a whole-number render says "less than 5% ...
+            # (currently 5%)", which is the same collision one step removed.
             frozen_reason = (
-                f"no part of the country is inside the calibrated sun-angle "
-                f"window ({100 * calibrated:.0f}% of the domain); {shown}"
+                f"less than {100 * C.MIN_CALIBRATED_FRACTION:.0f}% of the "
+                f"country is inside the calibrated sun-angle window "
+                f"(currently {100 * calibrated:.1f}%); {shown}"
             )
         elif not lit_now:
             frozen_reason = (

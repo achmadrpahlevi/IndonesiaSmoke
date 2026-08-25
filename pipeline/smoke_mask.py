@@ -55,7 +55,9 @@ def classify(grids: dict, slot: datetime) -> dict:
       smoke_bin uint8  binary smoke
       obscured  uint8  cloud, missing data, or too dark to judge
       clear     uint8  usable and smoke-free
-      stats     dict of coverage fractions
+      stats     dict of coverage fractions, including
+                clear_fraction_of_calibrated — the cloud tolerance the
+                forecast pairing gate reads, see below
     """
     lon2d, lat2d = common.grid_mesh()
     elev = common.solar_elevation(slot, lat2d, lon2d)
@@ -182,6 +184,21 @@ def classify(grids: dict, slot: datetime) -> dict:
         "cloud_fraction": float(cloud.sum() / n),
         "obscured_fraction": float(obscured.sum() / n),
         "clear_fraction": float((~obscured).sum() / n),
+        # How much CLOUD there is, asked only of the part of the country the
+        # thresholds actually apply to. clear_fraction cannot answer that any
+        # more: uncalibrated pixels are folded into `obscured`, so
+        # clear_fraction <= calibrated_fraction always, and across 47 degrees
+        # of longitude calibrated_fraction is 0.05-0.35 for most of the
+        # publishing day. Gating flow pairing on clear_fraction therefore
+        # rejected every mask for the first ~90 and last ~50 minutes of the
+        # day on sun angle alone, at a constant (MIN_CLEAR_FRACTION = 0.20)
+        # that was tuned as a cloud tolerance on a domain that was entirely
+        # calibrated. This is the number that stayed a cloud tolerance.
+        # Zero calibrated pixels -> 0.0: nothing was visible, which is the
+        # honest answer and is what the pairing gate should reject on.
+        "clear_fraction_of_calibrated": (
+            float((~obscured).sum() / calibrated.sum()) if calibrated.any() else 0.0
+        ),
         # Against what was actually VISIBLE, not against the whole grid.
         # Over the full country most pixels are out of window at any instant,
         # so the old whole-grid denominator would drag this toward zero and
