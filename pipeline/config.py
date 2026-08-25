@@ -15,13 +15,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Scratch space for raw HSD. Deleted immediately after processing
 # (non-negotiable #4: Actions runners have ~14 GB, full-disk AHI will fill it).
-WORK_DIR = Path(os.environ.get("KALIMSMOKE_WORK", REPO_ROOT / "work"))
+WORK_DIR = Path(os.environ.get("INDOSMOKE_WORK", REPO_ROOT / "work"))
 
 # Gridded scenes + masks that survive between runs (advection needs t-1).
-STATE_DIR = Path(os.environ.get("KALIMSMOKE_STATE", REPO_ROOT / "state"))
+STATE_DIR = Path(os.environ.get("INDOSMOKE_STATE", REPO_ROOT / "state"))
 
 # Everything published to GitHub Pages.
-SITE_DATA_DIR = Path(os.environ.get("KALIMSMOKE_OUT", REPO_ROOT / "site" / "data"))
+SITE_DATA_DIR = Path(os.environ.get("INDOSMOKE_OUT", REPO_ROOT / "site" / "data"))
 
 # --------------------------------------------------------------------------
 # Domain grid — fixed plate carree, ~2 km

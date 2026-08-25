@@ -92,6 +92,25 @@ def test_leaflet_bounds_are_south_west_then_north_east():
 
 
 # --------------------------------------------------------------------------
+# Config / env
+# --------------------------------------------------------------------------
+
+def test_state_dir_reads_the_new_env_prefix(monkeypatch, tmp_path):
+    """OPERATIONS.md tells a cold session to point STATE elsewhere when it
+    wants to keep a scene the pruner would drop. The name has to be right or
+    that instruction silently does nothing."""
+    import importlib
+
+    monkeypatch.setenv("INDOSMOKE_STATE", str(tmp_path))
+    try:
+        importlib.reload(C)
+        assert C.STATE_DIR == tmp_path
+    finally:
+        monkeypatch.delenv("INDOSMOKE_STATE", raising=False)
+        importlib.reload(C)
+
+
+# --------------------------------------------------------------------------
 # Time
 # --------------------------------------------------------------------------
 

@@ -2,13 +2,17 @@ name: pipeline
 
 on:
   schedule:
-    # Every 30 minutes, deliberately at :07 and :37 rather than :00 and :30.
+    # Every 30 minutes, deliberately at :17 and :47 rather than :00 and :30.
     # GitHub delays or silently DROPS scheduled runs under load, and load peaks
     # at the top of the hour, which is exactly where */30 fires. Measured on
     # 2026-08-22: gaps of 27-34 min through the quiet hours, then 52, 91 and 64
     # min once the busy period started, with nothing queued — the runs were
     # never created. Odd minutes sit in a much shorter queue.
-    - cron: "7,37 * * * *"
+    #
+    # :17/:47 rather than the KalimantanWildfires repo's :07/:37 so the two
+    # do not hit the FIRMS API in the same minute on the same key while both
+    # are live.
+    - cron: "17,47 * * * *"
   workflow_dispatch:
     inputs:
       date:
@@ -24,7 +28,7 @@ on:
 # Never let two runs fight over gh-pages. A late run is not worth a corrupt
 # deploy, so the in-flight one finishes and the newer one waits.
 concurrency:
-  group: kalimsmoke-pipeline
+  group: indosmoke-pipeline
   cancel-in-progress: false
 
 permissions:
@@ -52,8 +56,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: state
-          key: kalimsmoke-state-${{ github.run_id }}
-          restore-keys: kalimsmoke-state-
+          key: indosmoke-state-${{ github.run_id }}
+          restore-keys: indosmoke-state-
 
       - name: Fetch Himawari-9 scene
         id: fetch
@@ -96,10 +100,10 @@ jobs:
       - name: Publish to gh-pages
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_publish }}
         env:
-          GIT_AUTHOR_NAME: kalimsmoke-bot
-          GIT_AUTHOR_EMAIL: kalimsmoke-bot@users.noreply.github.com
-          GIT_COMMITTER_NAME: kalimsmoke-bot
-          GIT_COMMITTER_EMAIL: kalimsmoke-bot@users.noreply.github.com
+          GIT_AUTHOR_NAME: indosmoke-bot
+          GIT_AUTHOR_EMAIL: indosmoke-bot@users.noreply.github.com
+          GIT_COMMITTER_NAME: indosmoke-bot
+          GIT_COMMITTER_EMAIL: indosmoke-bot@users.noreply.github.com
         run: |
           set -euo pipefail
           STAMP=$(python -c "import json;print(json.load(open('site/data/meta.json'))['scene_utc'])")

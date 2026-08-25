@@ -34,7 +34,7 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
     # satpy and friends are chatty at INFO.
     for noisy in ("satpy", "pyresample", "pyproj", "botocore", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
-    return logging.getLogger("kalimsmoke")
+    return logging.getLogger("indosmoke")
 
 
 # --------------------------------------------------------------------------
@@ -326,7 +326,7 @@ def prune_state(prefix: str, keep: int = 8, drop_dark: bool = True) -> None:
     "inside the calibrated sun-angle range", not merely "not night". Scenes
     that are perfectly visible but too low-sun to publish are dropped too.
     That is right for the pipeline and surprising for diagnostics: set
-    KALIMSMOKE_STATE elsewhere and stub this out when you want to keep one.
+    INDOSMOKE_STATE elsewhere and stub this out when you want to keep one.
     """
     entries = list_state(prefix)
     if drop_dark:

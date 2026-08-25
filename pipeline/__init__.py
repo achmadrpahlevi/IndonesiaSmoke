@@ -1,1 +1,1 @@
-"""KalimSmoke pipeline. Run each stage with `python -m pipeline.<stage>`."""
+"""IndonesiaSmoke pipeline. Run each stage with `python -m pipeline.<stage>`."""
