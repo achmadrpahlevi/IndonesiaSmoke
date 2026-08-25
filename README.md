@@ -82,9 +82,13 @@ point at ~0°. `RESAMPLE_RADIUS_M` was raised to 8000 m to clear pixel
 footprints of roughly 3.3–5.6 km at that western edge (the range comes from
 two different stretch models this codebase doesn't choose between — see
 `pipeline/config.py`'s comment on the constant). Mask thresholds were tuned
-over Borneo, at a viewing zenith around 26–31°. The problem used to be one bad
-edge; now it is the full *range* of scattering geometry across the domain,
-from near-nadir over Papua to 53° at Sabang — see "Known limits".
+over Borneo, at a viewing zenith of **24.8-38.4°, measured** by sweeping
+`view_zenith` across Borneo's real extent (lon 108.5-119.5°, lat -4.5-7.5°,
+0.5° steps) — not the narrower ~26-31° an earlier estimate claimed. West
+Borneo alone (Pontianak 36.6°, Kuching 35.4°) sits much closer to Sabang's
+53° than that range implied. The problem used to be one bad edge; now it is
+the full *range* of scattering geometry across the domain, from near-nadir
+over Papua to 53° at Sabang — see "Known limits".
 
 ### How this compares to BMKG and ASMC
 
@@ -221,16 +225,22 @@ Every stage takes `--date YYYYMMDD_HHMM` (UTC) for backfill and testing, and
 
 ### How busy the hotspot layer is
 
-`FIRMS_MIN_FRP_MW` in `config.py` controls it. On a bad day FIRMS returns
-7000+ detections in this domain, which merge into one red mass and hide the
-smoke field they are meant to explain. Measured on 2026-08-21:
+`FIRMS_MIN_FRP_MW` in `config.py` controls it (current default: **50 MW**).
+On a bad day FIRMS returns 7000+ detections in this domain, which merge into
+one red mass and hide the smoke field they are meant to explain. Measured on
+2026-08-21, on the old Kalimantan-only domain — roughly a third the area of
+the current one — so these counts are stale on two axes: the row marked
+default here was not yet the default, and the domain has since tripled.
+Kept as the shape of the relationship (raising the floor trades detections
+for readability) rather than as current counts; will be re-measured once the
+new pipeline has run live:
 
 | floor | points | share of total radiative power |
 |---|---|---|
 | 0 MW | 7,222 | 100% |
 | 10 MW | ~2,900 | 79% |
-| **20 MW (default)** | **1,038** | **58%** |
-| 50 MW | ~350 | 30% |
+| 20 MW | 1,038 | 58% |
+| **50 MW (default)** | **~350** | **30%** |
 
 Confidence is not a useful dial here, though it looks like one: of 5,261
 detections, VIIRS returned 3,843 nominal, 151 high and **0 low**. Filtering to
@@ -468,13 +478,15 @@ first. The other four, and the detailed daylight/sun-angle record below them,
 carry over from the Kalimantan-only domain unchanged.
 
 - **Scattering geometry varies far more than before.** Papua sits at the
-  sub-satellite point (viewing zenith ~0°), Borneo at ~26-31° depending on
-  where in it, Sabang at 53° (measured — see "Domain" above; an earlier
-  estimate of ~60° was wrong). Every threshold in `config.py` was tuned at
-  Borneo's geometry, in the middle of that range, not at either end of it.
+  sub-satellite point (viewing zenith ~0°), Borneo at **24.8-38.4°, measured**
+  across its real extent (lon 108.5-119.5°, lat -4.5-7.5° — not the narrower
+  ~26-31° an earlier estimate claimed; west Borneo alone runs 35-37°), Sabang
+  at 53° (measured — see "Domain" above; an earlier estimate of ~60° was
+  wrong). Every threshold in `config.py` was tuned at Borneo's geometry,
+  somewhere within that 13.6° spread, not at either domain extreme.
 - **Sun glint near the sub-satellite point.** The morning water-test fix
   (`WATER_SMOKE_B03_MIN = 14`) was derived for Borneo morning geometry, where
-  sun and sensor share a side at ~26-31° off nadir. It has never been tested
+  sun and sensor share a side at roughly 25-38° off nadir. It has never been tested
   over the Banda and Arafura seas with the satellite almost directly
   overhead. Expect this to need work.
 - **Java, Bali and Nusa Tenggara** — dry-season bare soil and volcanic

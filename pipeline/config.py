@@ -256,7 +256,9 @@ MIN_SCENE_ELEVATION_DEG = 40.0
 # that gate leaves a publishing window of roughly four hours and discards
 # both Papua's morning and Sumatra's afternoon. The sun test is now per pixel
 # (see common.calibrated_mask), so this only has to answer "is there anything
-# worth drawing", and the day runs from about 23:15 UTC to 09:00 UTC.
+# worth drawing", and the day runs from about 23:32 UTC to 08:50 UTC —
+# measured directly off this function at the 0.05 gate (2026-08-21/22), not
+# the earlier 23:15-09:00 estimate this comment used to state.
 #
 # Raise it to shorten the day at both ends without touching the physics.
 MIN_CALIBRATED_FRACTION = 0.05

@@ -198,13 +198,14 @@ New to the Indonesia-wide domain, from `docs/superpowers/specs/2026-08-25-indone
 §7:
 
 - **Scattering geometry varies far more than before.** Papua sits at the
-  sub-satellite point (viewing zenith ~0°), Borneo at ~26-31°, Sabang at
-  **53°, measured** (an earlier estimate of ~60° was wrong — see
-  `README.md`'s "Domain"). Every threshold in `config.py` was tuned at
-  Borneo's geometry.
+  sub-satellite point (viewing zenith ~0°), Borneo at **24.8-38.4°, measured**
+  across lon 108.5-119.5°, lat -4.5-7.5° (not the narrower ~26-31° an earlier
+  estimate claimed), Sabang at **53°, measured** (an earlier estimate of ~60°
+  was wrong — see `README.md`'s "Domain"). Every threshold in `config.py` was
+  tuned at Borneo's geometry, somewhere in that spread.
 - **Sun glint near the sub-satellite point.** The morning water-test fix
   (`WATER_SMOKE_B03_MIN = 14`) was derived for Borneo morning geometry, where
-  sun and sensor share a side at ~26-31° off nadir. It has never been tested
+  sun and sensor share a side at roughly 25-38° off nadir. It has never been tested
   over the Banda and Arafura seas with the satellite almost directly
   overhead. Expect this to need work — it is what to be most suspicious of
   during the 04:00 UTC checkpoint above.
