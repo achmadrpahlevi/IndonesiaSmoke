@@ -45,10 +45,11 @@ GRID_NX = int(round((LON_MAX - LON_MIN) / GRID_RES_DEG))  # 2375
 GRID_NY = int(round((LAT_MAX - LAT_MIN) / GRID_RES_DEG))  # 975
 
 # Nearest-neighbour radius for resampling AHI -> grid, metres. At 94.5 E the
-# viewing zenith angle is about 60 degrees, so a 2 km nadir pixel is
-# stretched past 5 km and the old 5000 m radius left holes along the western
-# edge. Verified by counting the NaN fraction west of 97 E — see the QA step
-# in Task 10.
+# viewing zenith angle is 53.1 degrees (measured with
+# pipeline.rayleigh.view_zenith at lon 94.5, lat 0), so a 2 km nadir pixel is
+# stretched well past that spacing and the old 5000 m radius left holes
+# along the western edge. Verified by counting the NaN fraction west of 97 E
+# — see the QA step in Task 10.
 RESAMPLE_RADIUS_M = 8000
 
 # --------------------------------------------------------------------------
@@ -73,9 +74,14 @@ AHI_BANDS = ["B01", "B03", "B05", "B06", "B11", "B13", "B14"]
 # satpy dataset names for the bands above.
 AHI_DATASETS = {b: b for b in AHI_BANDS}
 
-# FLDK is split into 10 segments, north to south. Kalimantan straddles the
-# equator, which lands mid-disk. Computed properly in fetch_ahi.segments_for_bbox;
-# this is the fallback when the geometry calculation is unavailable.
+# FLDK is split into 10 segments, north to south — a fixed property of the
+# full disk itself, not of what we ask for. Indonesia straddles the equator
+# just as Kalimantan alone did, so the domain still lands mid-disk. Each
+# segment boundary is a fraction of disk height, independent of grid
+# resolution or domain width, so one calculation in
+# fetch_ahi.segments_for_bbox serves whatever bbox we point it at. Computed
+# properly there; this is the fallback when the geometry calculation is
+# unavailable.
 AHI_TOTAL_SEGMENTS = 10
 AHI_FALLBACK_SEGMENTS = [4, 5, 6, 7, 8]
 
@@ -457,23 +463,43 @@ DAYLIGHT_MIN_FRACTION = 0.25
 FOCUS_LON = 118.25
 FOCUS_LAT = -1.75
 
-# Indonesian western time, for the header.
-DISPLAY_TZ_OFFSET_HOURS = 7
-DISPLAY_TZ_LABEL = "WIB"
+# Displayed time. UTC, because the domain spans WIB (UTC+7), WITA (UTC+8)
+# and WIT (UTC+9) and no single Indonesian zone describes it. The page shows
+# all three local equivalents on a second line, so nobody has to do the
+# arithmetic; this is the one clock everything is stamped in.
+#
+# to_display_tz is the single seam, so publish, smoke_mask and validate all
+# follow from these two values.
+DISPLAY_TZ_OFFSET_HOURS = 0
+DISPLAY_TZ_LABEL = "UTC"
 
-# Cities called out in the site legend (stretch: per-city ETA).
+# Cities called out in the site legend. Chosen for coverage rather than
+# population: at least one anchor per major island so a reader can locate
+# themselves anywhere in the domain, plus the downwind capitals that made
+# the transboundary case for the original grid.
 CITIES = [
+    # Sumatra
+    {"name": "Medan", "lat": 3.59, "lon": 98.67},
+    {"name": "Pekanbaru", "lat": 0.51, "lon": 101.45},
+    {"name": "Palembang", "lat": -2.99, "lon": 104.76},
+    # Java
+    {"name": "Jakarta", "lat": -6.21, "lon": 106.85},
+    {"name": "Surabaya", "lat": -7.25, "lon": 112.75},
     # Kalimantan
     {"name": "Pontianak", "lat": -0.02, "lon": 109.34},
     {"name": "Palangkaraya", "lat": -2.21, "lon": 113.92},
     {"name": "Banjarmasin", "lat": -3.32, "lon": 114.59},
     {"name": "Samarinda", "lat": -0.50, "lon": 117.15},
     {"name": "Balikpapan", "lat": -1.24, "lon": 116.85},
-    {"name": "Kuching", "lat": 1.55, "lon": 110.34},
-    # Downwind, and the reason the domain reaches this far west
+    # Sulawesi and the east
+    {"name": "Makassar", "lat": -5.15, "lon": 119.43},
+    {"name": "Manado", "lat": 1.47, "lon": 124.84},
+    {"name": "Ambon", "lat": -3.65, "lon": 128.19},
+    {"name": "Jayapura", "lat": -2.53, "lon": 140.72},
+    {"name": "Kupang", "lat": -10.18, "lon": 123.61},
+    # Downwind, and the reason the domain still reaches this far west
     {"name": "Singapore", "lat": 1.35, "lon": 103.82},
     {"name": "Kuala Lumpur", "lat": 3.14, "lon": 101.69},
-    {"name": "Johor Bahru", "lat": 1.49, "lon": 103.74},
-    {"name": "Malacca", "lat": 2.19, "lon": 102.25},
-    {"name": "Pekanbaru", "lat": 0.51, "lon": 101.45},
+    {"name": "Kuching", "lat": 1.55, "lon": 110.34},
+    {"name": "Bandar Seri Begawan", "lat": 4.90, "lon": 114.94},
 ]

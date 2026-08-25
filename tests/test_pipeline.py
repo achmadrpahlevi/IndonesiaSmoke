@@ -117,8 +117,34 @@ def test_slot_id_round_trips():
     assert common.parse_slot_id(common.slot_id(NOON)) == NOON
 
 
-def test_display_tz_is_wib():
-    assert common.to_display_tz(NOON).hour == 13
+def test_display_tz_is_utc():
+    """Indonesia spans WIB, WITA and WIT. One clock for the whole map, and
+    the page renders the three local equivalents beneath it."""
+    assert C.DISPLAY_TZ_LABEL == "UTC"
+    assert C.DISPLAY_TZ_OFFSET_HOURS == 0
+    assert common.to_display_tz(NOON).hour == 6
+
+
+def test_cities_span_all_three_time_zones():
+    lons = [c["lon"] for c in C.CITIES]
+    assert min(lons) < 105, "no WIB city in the far west"
+    assert any(115 <= lon < 130 for lon in lons), "no WITA city"
+    assert max(lons) >= 130, "no WIT city"
+    for c in C.CITIES:
+        assert C.LON_MIN <= c["lon"] <= C.LON_MAX, c["name"]
+        assert C.LAT_MIN <= c["lat"] <= C.LAT_MAX, c["name"]
+
+
+def test_validation_regions_cover_the_acceptance_gate():
+    """Cutover requires enrichment above 3x in each of these. They have to
+    exist before anything can be scored against them."""
+    from pipeline import validate
+
+    for name in ("Sumatra", "Kalimantan", "Sulawesi", "Papua"):
+        assert name in validate.REGIONS
+    for name, (w, e, s, n) in validate.REGIONS.items():
+        assert C.LON_MIN <= w < e <= C.LON_MAX, name
+        assert C.LAT_MIN <= s < n <= C.LAT_MAX, name
 
 
 # --------------------------------------------------------------------------

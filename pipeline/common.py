@@ -240,7 +240,8 @@ def domain_is_daylit(dt: datetime) -> tuple[bool, float]:
     # Morning scenes were once withheld regardless of sun height, because sun
     # and sensor share a side before local noon. The cause turned out to be
     # the water test rather than the geometry, so this is disabled and left
-    # as a valve. See MIN_SCENE_LOCAL_HOUR.
+    # as a valve. See MIN_SCENE_LOCAL_HOUR. Note it is now read in UTC, not
+    # WIB.
     local_hour = to_display_tz(dt).hour + to_display_tz(dt).minute / 60.0
     afternoon = local_hour >= C.MIN_SCENE_LOCAL_HOUR
 

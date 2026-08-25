@@ -30,9 +30,16 @@ from .smoke_mask import load_mask_npz
 
 log = None
 
+# Regions scored independently against FIRMS. Kalimantan at 14:00 WIB is the
+# only one ever cross-checked against an independent sensor on the old
+# domain; the rest exist so that the acceptance gate has something to fail.
 REGIONS = {
+    "Sumatra": (95.0, 106.5, -6.0, 6.0),
     "Kalimantan": (109.0, 118.0, -4.0, 3.0),
-    "Sumatra": (100.0, 106.0, -5.0, 4.0),
+    "Java": (105.0, 115.0, -9.0, -5.5),
+    "Sulawesi": (118.5, 125.5, -6.0, 2.0),
+    "Maluku": (125.0, 135.0, -8.5, 3.0),
+    "Papua": (130.5, 141.5, -9.5, 0.5),
     "Malacca Strait": (100.5, 104.0, 1.0, 5.0),
 }
 
@@ -99,9 +106,9 @@ def main(argv=None) -> int:
     feats = gj["features"]
     prior = [f for f in feats if (t := acq_time(f)) and t <= slot]
 
-    print("scene %s (%s WIB)  smoke %.2f%%  obscured %.1f%%" % (
+    print("scene %s (%s %s)  smoke %.2f%%  obscured %.1f%%" % (
         common.slot_id(slot), common.to_display_tz(slot).strftime("%H:%M"),
-        100 * smoke.mean(), 100 * obscured.mean()))
+        C.DISPLAY_TZ_LABEL, 100 * smoke.mean(), 100 * obscured.mean()))
     e_all, _, n_all = enrichment(smoke, obscured, feats)
     e_pri, h_pri, n_pri = enrichment(smoke, obscured, prior)
     print("  hotspot enrichment, fires before this scene : %.1fx  (%d/%d)"
