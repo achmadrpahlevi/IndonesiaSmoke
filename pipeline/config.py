@@ -46,10 +46,15 @@ GRID_NY = int(round((LAT_MAX - LAT_MIN) / GRID_RES_DEG))  # 975
 
 # Nearest-neighbour radius for resampling AHI -> grid, metres. At 94.5 E the
 # viewing zenith angle is 53.1 degrees (measured with
-# pipeline.rayleigh.view_zenith at lon 94.5, lat 0), so a 2 km nadir pixel is
-# stretched well past that spacing and the old 5000 m radius left holes
-# along the western edge. Verified by counting the NaN fraction west of 97 E
-# — see the QA step in Task 10.
+# pipeline.rayleigh.view_zenith at lon 94.5, lat 0). A 2 km nadir pixel's
+# ground footprint grows with that angle, but by how much depends on the
+# model: 1/cos gives 3.3 km, 1/cos^2 gives 5.6 km, and nothing in this
+# codebase computes actual AHI footprint growth, so which one applies here
+# is not known from first principles. 8000 m clears both, so the radius
+# itself is not what decides whether the western edge comes back with
+# holes. That question is settled by measurement, not this comment: the
+# first live run counts the NaN fraction west of 97 E and the radius gets
+# raised if that measurement demands it — see the QA step in Task 10.
 RESAMPLE_RADIUS_M = 8000
 
 # --------------------------------------------------------------------------
