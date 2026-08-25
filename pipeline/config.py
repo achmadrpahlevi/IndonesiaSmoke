@@ -52,9 +52,26 @@ GRID_NY = int(round((LAT_MAX - LAT_MIN) / GRID_RES_DEG))  # 975
 # codebase computes actual AHI footprint growth, so which one applies here
 # is not known from first principles. 8000 m clears both, so the radius
 # itself is not what decides whether the western edge comes back with
-# holes. That question is settled by measurement, not this comment: the
-# first live run counts the NaN fraction west of 97 E and the radius gets
-# raised if that measurement demands it — see the QA step in Task 10.
+# holes.
+#
+# MEASURED on the 20260825_0220 UTC scene, which is what settles it. NaN
+# fraction of B03 by longitude band:
+#
+#     94.5-97 E   2.21%   <- the far west, the case for raising the radius
+#     97-135 E    0.00-0.03%
+#     135-142 E   2.28%   <- near the sub-satellite point, SMALLEST pixels
+#
+# The two edges are equally affected, and the eastern one sits almost under
+# the satellite where there is no stretch to speak of. So the residual holes
+# are not a pixel-footprint problem at all: they are the extreme NE and SW
+# corners falling outside the scan-line segments fetched, and they land in
+# open ocean. Borneo measures 0.00%, and all 19 cities in CITIES plus
+# Sabang, Merauke, Rote and Miangas measure 0.0% over an 11x11 cell window.
+#
+# 8000 m is therefore sufficient. Whether 5000 m would also have sufficed is
+# NOT tested — the raw HSD is deleted after gridding, so comparing the two
+# radii means re-downloading a scene. Left at 8000 because it is measured
+# safe, not because 5000 is measured unsafe.
 RESAMPLE_RADIUS_M = 8000
 
 # --------------------------------------------------------------------------
