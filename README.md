@@ -1,6 +1,6 @@
-# KalimSmoke
+# IndonesiaSmoke
 
-Live dashboard for Kalimantan wildfire smoke: current smoke extent from
+Live dashboard for Indonesian wildfire smoke: current smoke extent from
 Himawari-9, hotspots from NASA FIRMS, and a 0–3 h forward advection of the
 smoke field.
 
@@ -22,8 +22,8 @@ and the list of faults already found and fixed so they are not re-diagnosed.
 ```
 every 30 min (GitHub Actions)
   fetch_ahi    latest Himawari-9 FLDK scene from the public noaa-himawari9
-               bucket → only the band/segment files touching 100–120°E,
-               5°S–8°N → satpy → fixed 0.02° plate carrée grid → state/*.npz
+               bucket → only the band/segment files touching 94.5–142°E,
+               11.5°S–8°N → satpy → fixed 0.02° plate carrée grid → state/*.npz
   smoke_mask   B01/B03 reflectance + B03−B06 SWIR contrast + B11−B14
                split-window → smoke density, cloud "obscured", clear
   advect       Farnebäck optical flow between the last two masks →
@@ -38,24 +38,53 @@ time slider.
 
 ### Domain
 
-100–120°E, 5°S–8°N, on a fixed 0.02° (~2.2 km) grid — 1000 × 650 cells.
+94.5–142.0°E, 11.5°S–8.0°N, on a fixed 0.02° (~2.2 km) grid — 2375 × 975
+cells, 2.32M of them, 3.6× the original Kalimantan-only grid (1000 × 650).
+Sabang to Merauke, Rote to Miangas, plus the countries the haze actually
+reaches: Singapore, Peninsular Malaysia, Sarawak, Sabah, Brunei, Timor-Leste
+and the PNG border.
 
-It reaches west to Singapore, Peninsular Malaysia and the Riau fire belt on
-purpose: transboundary haze is the question people actually ask, and a grid
-that stops at Borneo cannot answer it. The extra width is close to free,
-because AHI splits the disk into segments by scan line, so a wider longitude
-range is a bigger crop of files already being downloaded — same 28 files,
-same ~240 MB.
+The extra width is not free the way the first westward extension was — AHI
+still splits the disk into segments by scan line, but the taller country
+needs one more of them: 5 segments × 7 bands = 35 files, ~300 MB, against the
+old domain's 4 × 7 = 28 files, ~240 MB (measured, both domains, not assumed —
+see `.superpowers/sdd/2026-08-25-indonesia-smoke-domain/task-1-report.md`).
 
-The map opens centred on Kalimantan (`FOCUS_LON`/`FOCUS_LAT` in `config.py`)
-rather than on the middle of the grid, which after the westward extension is
-the Java Sea. `common.view_bounds()` mirrors the data bounds about that focus
-so the subject stays centred with Singapore and Malaysia visible to its west.
+**The sun-angle gate is now per pixel, not per scene.** `MIN_SCENE_ELEVATION_DEG`
+(40°) is unchanged, but across 47.5° of longitude no single clock describes
+the whole country, so it is now evaluated separately for every cell
+(`common.calibrated_mask`). A pixel below 40° is folded into `obscured` and
+hatched — same drawing as a cloud, different reason — rather than guessed at
+or used to withhold the whole scene. What still gates the *scene* is
+`MIN_CALIBRATED_FRACTION` (0.05): at least 5% of the domain has to be inside
+the 40° range for anything to be worth publishing at all. Measured against
+that gate on 2026-08-21/22, the country-wide publishing window is
+**23:32–~08:50 UTC** — open at 23:32 (Task 2, minute-resolution scan of
+`calibrated_fraction`), closed by 08:51 (same method, run for this pass; the
+last minute at or above the gate is 08:50). That is a deterministic function
+of date and location, not something that needs a live run to pin down, though
+it will drift by a few minutes across the season. What a live run *will*
+settle is which actual scene times bracket it, since AHI availability and the
+cron schedule (`:17`/`:47`) don't line up with the gate to the minute.
 
-Caveat on the western edge: at 100°E the satellite viewing zenith angle is
-roughly 50–55°, so pixels are stretched to 3–4 km and the atmospheric path is
-longer than over Borneo. Mask thresholds were tuned over Borneo; treat smoke
-detections near the far west as less reliable than those over Kalimantan.
+The map opens on the data bounds themselves (`common.view_bounds() ==
+leaflet_bounds()`), not centred on any one place — an all-Indonesia domain has
+no single subject to pull the view toward the way `FOCUS_LON` used to pull it
+back onto Borneo after the old westward extension to Singapore. `FOCUS_LON`/
+`FOCUS_LAT` (118.25, -1.75, the geometric centre) are still published in
+`meta.json` as `"focus"`, but the page does not currently read that field for
+the opening view.
+
+Caveat on the geometry, extended rather than fixed: at the western edge
+(94.5°E) the satellite viewing zenith is **53.1°, measured** — not the ~60°
+an earlier estimate claimed — while Papua sits close to the sub-satellite
+point at ~0°. `RESAMPLE_RADIUS_M` was raised to 8000 m to clear pixel
+footprints of roughly 3.3–5.6 km at that western edge (the range comes from
+two different stretch models this codebase doesn't choose between — see
+`pipeline/config.py`'s comment on the constant). Mask thresholds were tuned
+over Borneo, at a viewing zenith around 26–31°. The problem used to be one bad
+edge; now it is the full *range* of scattering geometry across the domain,
+from near-nadir over Papua to 53° at Sabang — see "Known limits".
 
 ### How this compares to BMKG and ASMC
 
@@ -67,17 +96,23 @@ is 10-minute weather imagery and not a smoke product at all.
 
 <https://www.bmkg.go.id/cuaca/satelit/citra-sebaran-asap>
 
-| | BMKG *Citra Sebaran Asap* | ASMC | KalimSmoke |
+| | BMKG *Citra Sebaran Asap* | ASMC | IndonesiaSmoke |
 |---|---|---|---|
 | Source | Himawari-9 smoke RGB | NOAA-20 / SNPP (polar) | Himawari-9 |
 | Cadence | **1 image per day**, 16:00 WIB | ~1 overpass/day per region | **30 min** |
-| Hours | daytime only (visible bands) | 1 daytime pass | daytime only, 09:30-14:00 WIB |
-| Coverage | all Indonesia | ASEAN, by region | 100-120E, 5S-8N |
+| Hours | daytime only (visible bands) | 1 daytime pass | daytime only, ~23:32-08:50 UTC |
+| Coverage | all Indonesia | ASEAN, by region | 94.5-142E, 11.5S-8N |
 | Smoke | **polygons** + written analysis | visible in false colour, not delineated | **gridded 2 km density** |
 | Wind | 1000 hPa vectors overlaid | - | (stretch, GFS 850 hPa) |
 | Fire | Geohotspot (Himawari IR) | VIIRS counts by confidence | FIRMS VIIRS+MODIS, 375 m |
 | **Forward projection** | direction of travel, in words | daily narrative outlook | **0-3 h gridded, 30-min steps** |
 | Status | official, mandated | official, mandated | unvalidated side project |
+
+Coverage is no longer a real point of difference from BMKG — the domain now
+spans the whole country, same as theirs. It was a genuine gap against the old
+100-120E Kalimantan-and-neighbours domain; widening it closed that gap rather
+than shrinking it. What still separates the two is cadence, format, and
+interpretation, below.
 
 BMKG hits the same wall we do, for the same reason, and says so: *"Produk ini
 hanya tersedia pada siang hingga sore hari"* - visible-band RGB, so daytime
@@ -99,8 +134,10 @@ Where they are better:
 
 What is actually ours:
 
-- **Cadence.** Nine frames a day against their one. For a field moving at a
-  few m/s, a daily snapshot cannot show movement. That is the gap PLAN.md
+- **Cadence.** Roughly eighteen frames a day against their one — the window
+  widened along with the domain, from about 4.5 h to about 9.3 h (23:32-08:50
+  UTC, see "Domain" above), at the same 30-min cadence. For a field moving at
+  a few m/s, a daily snapshot cannot show movement. That is the gap PLAN.md
   aimed at, and it is wider than it first appeared.
 - **A gridded, scrubbable field** rather than polygons plus prose.
 - Honest uncertainty on the face of the map: cloud hatching, staleness banner,
@@ -426,10 +463,55 @@ One case is not a validation study, and the plan does not claim one.
 
 ## Known limits
 
-**Daylight only, and a narrower day than you might expect: 09:30–14:00 WIB.**
-The mask needs a solar elevation of at least 50°. That is not a sensor limit,
-it is a calibration limit, and it was measured rather than assumed. Holding
-thresholds fixed and sweeping the sun angle on 2026-08-21:
+Seven now, not four — three are new to the Indonesia-wide domain and listed
+first. The other four, and the detailed daylight/sun-angle record below them,
+carry over from the Kalimantan-only domain unchanged.
+
+- **Scattering geometry varies far more than before.** Papua sits at the
+  sub-satellite point (viewing zenith ~0°), Borneo at ~26-31° depending on
+  where in it, Sabang at 53° (measured — see "Domain" above; an earlier
+  estimate of ~60° was wrong). Every threshold in `config.py` was tuned at
+  Borneo's geometry, in the middle of that range, not at either end of it.
+- **Sun glint near the sub-satellite point.** The morning water-test fix
+  (`WATER_SMOKE_B03_MIN = 14`) was derived for Borneo morning geometry, where
+  sun and sensor share a side at ~26-31° off nadir. It has never been tested
+  over the Banda and Arafura seas with the satellite almost directly
+  overhead. Expect this to need work.
+- **Java, Bali and Nusa Tenggara** — dry-season bare soil and volcanic
+  terrain are false-positive sources this pipeline has never been run
+  against.
+- Four more carry over from the original domain unchanged: shallow coastal
+  water, West Kalimantan extent, sun-angle drift inside the calibrated range,
+  and inactive wind arrows. Only the sun-angle one is detailed below, since
+  it is the physics the 40° floor above rests on; see `OPERATIONS.md`'s
+  "Known limits" list for the other three, stated there for a diagnosing
+  reader.
+
+**Daylight only, and now a per-pixel gate rather than one clock for the whole
+country.** `MIN_SCENE_ELEVATION_DEG` (40°) is unchanged, but what it gates
+changed: on the Kalimantan-only domain this was a per-*scene* threshold, one
+clock for the whole 20°-wide domain, and a 40° version of that scene-level
+gate was tried and rejected (below) because it hatched half the domain at
+once and looked like a broken map. Across 47.5° of longitude that scene-level
+framing stopped making sense — there is no one clock — so it is now evaluated
+per pixel (`common.calibrated_mask`), and a pixel below 40° is folded into
+`obscured` and hatched rather than guessed at. A mostly-hatched map is now
+correct behaviour, not the failure it would have been under the old
+scene-level design — see `OPERATIONS.md`'s "Expected behaviour that looks
+like breakage".
+
+The reasoning and the numbers below were worked out entirely on the old
+Kalimantan-only domain and predate the widening; the physics (Rayleigh
+scattering, why the mask needs a sun-angle floor at all) is unchanged and
+still governs every pixel. The WIB clock times are not — they described one
+scene-level window that no longer exists. The current, measured, whole-domain
+publishing window is in "Domain" above: **23:32-~08:50 UTC**.
+
+The mask needs a solar elevation of at least 50° to trust unreservedly, and
+40° to trust with a caveat (see `MIN_SCENE_ELEVATION_DEG`'s comment in
+`config.py`). That is not a sensor limit, it is a calibration limit, and it
+was measured rather than assumed. Holding thresholds fixed and sweeping the
+sun angle on 2026-08-21, on the old domain:
 
 | WIB | sun elev | smoke detected |
 |---|---|---|

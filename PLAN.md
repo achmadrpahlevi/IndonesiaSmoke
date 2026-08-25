@@ -1,5 +1,10 @@
 # KalimSmoke — Weekend Build Plan
 
+> **Superseded in part, 2026-08-25.** The domain and the sun-angle gate were
+> reworked for all of Indonesia — see
+> `docs/superpowers/specs/2026-08-25-indonesia-smoke-domain-design.md`. The
+> scope decisions in §1 and the non-negotiables in §5 still stand.
+
 Live dashboard for Kalimantan wildfire smoke: current smoke extent from Himawari-9, hotspots from FIRMS, and a 0–3 h forward advection of the smoke field. Fills the gap between BMKG (current imagery only) and ASMC (daily narrative outlook): **hourly, gridded, short-range smoke movement with a time slider.**
 
 Not a research product. No novelty claims, no validation study. "Daytime only, indicative" is the standing caption.
