@@ -1,0 +1,232 @@
+{
+  "generated_utc": "2026-09-12T23:27:44Z",
+  "scene_utc": "2026-09-12T04:50:00Z",
+  "scene_local": "2026-09-12 04:50",
+  "tz_label": "UTC",
+  "tz_offset_hours": 0,
+  "stale_after_minutes": 90,
+  "age_minutes_at_build": 1117.7,
+  "daylight": false,
+  "frozen": true,
+  "bounds": [
+    [
+      -11.5,
+      94.5
+    ],
+    [
+      8.0,
+      142.0
+    ]
+  ],
+  "view_bounds": [
+    [
+      -11.5,
+      94.5
+    ],
+    [
+      8.0,
+      142.0
+    ]
+  ],
+  "focus": [
+    -1.75,
+    118.25
+  ],
+  "grid": {
+    "nx": 2375,
+    "ny": 975,
+    "res_deg": 0.02
+  },
+  "caption": "Indicative short-range smoke movement, daytime only. Not an official forecast \u2014 see BMKG and ASMC.",
+  "layers": {
+    "now": "smoke_now.png",
+    "obscured": "obscured.png",
+    "uncalibrated": "uncalibrated.png",
+    "forecast": [
+      {
+        "minutes": 30,
+        "file": "fcst_030.png",
+        "valid_utc": "2026-09-12T05:20:00Z",
+        "valid_local": "05:20"
+      },
+      {
+        "minutes": 60,
+        "file": "fcst_060.png",
+        "valid_utc": "2026-09-12T05:50:00Z",
+        "valid_local": "05:50"
+      },
+      {
+        "minutes": 90,
+        "file": "fcst_090.png",
+        "valid_utc": "2026-09-12T06:20:00Z",
+        "valid_local": "06:20"
+      },
+      {
+        "minutes": 120,
+        "file": "fcst_120.png",
+        "valid_utc": "2026-09-12T06:50:00Z",
+        "valid_local": "06:50"
+      },
+      {
+        "minutes": 150,
+        "file": "fcst_150.png",
+        "valid_utc": "2026-09-12T07:20:00Z",
+        "valid_local": "07:20"
+      },
+      {
+        "minutes": 180,
+        "file": "fcst_180.png",
+        "valid_utc": "2026-09-12T07:50:00Z",
+        "valid_local": "07:50"
+      }
+    ]
+  },
+  "scene_stats": {
+    "water_fraction": 0.4181,
+    "valid_fraction": 0.995,
+    "daylit_fraction": 1.0,
+    "calibrated_fraction": 1.0,
+    "uncalibrated_fraction": 0.0,
+    "cloud_fraction": 0.2684,
+    "obscured_fraction": 0.2735,
+    "clear_fraction": 0.7265,
+    "clear_fraction_of_calibrated": 0.7265,
+    "smoke_fraction_of_visible": 0.0349,
+    "smoke_over_water_fraction": 0.111,
+    "mean_solar_elevation": 72.514,
+    "mean_calibrated_elevation": 72.514
+  },
+  "quality": {
+    "pair": [
+      "20260912_0420",
+      "20260912_0450"
+    ],
+    "pair_gap_minutes": 30.0,
+    "clear_fraction": 0.727,
+    "clear_fraction_of_calibrated": 0.727,
+    "flow_rejected": false,
+    "suppressed": false,
+    "reason": "",
+    "footprint_cells": 2216025,
+    "median_speed_ms": 2.56,
+    "p95_speed_ms": 9.91,
+    "bearing_from_deg": 34.0,
+    "u_ms": -0.61,
+    "v_ms": -0.91,
+    "sample_cells": 59021
+  },
+  "firms": {
+    "generated_utc": "2026-09-12T23:27:41Z",
+    "sources": [
+      "VIIRS_SNPP_NRT",
+      "VIIRS_NOAA20_NRT",
+      "MODIS_NRT"
+    ],
+    "day_range": 2,
+    "count": 229,
+    "min_frp_mw": 50.0,
+    "below_frp_floor": 37086,
+    "stale": false,
+    "note": ""
+  },
+  "cities": [
+    {
+      "name": "Medan",
+      "lat": 3.59,
+      "lon": 98.67
+    },
+    {
+      "name": "Pekanbaru",
+      "lat": 0.51,
+      "lon": 101.45
+    },
+    {
+      "name": "Palembang",
+      "lat": -2.99,
+      "lon": 104.76
+    },
+    {
+      "name": "Jakarta",
+      "lat": -6.21,
+      "lon": 106.85
+    },
+    {
+      "name": "Surabaya",
+      "lat": -7.25,
+      "lon": 112.75
+    },
+    {
+      "name": "Pontianak",
+      "lat": -0.02,
+      "lon": 109.34
+    },
+    {
+      "name": "Palangkaraya",
+      "lat": -2.21,
+      "lon": 113.92
+    },
+    {
+      "name": "Banjarmasin",
+      "lat": -3.32,
+      "lon": 114.59
+    },
+    {
+      "name": "Samarinda",
+      "lat": -0.5,
+      "lon": 117.15
+    },
+    {
+      "name": "Balikpapan",
+      "lat": -1.24,
+      "lon": 116.85
+    },
+    {
+      "name": "Makassar",
+      "lat": -5.15,
+      "lon": 119.43
+    },
+    {
+      "name": "Manado",
+      "lat": 1.47,
+      "lon": 124.84
+    },
+    {
+      "name": "Ambon",
+      "lat": -3.65,
+      "lon": 128.19
+    },
+    {
+      "name": "Jayapura",
+      "lat": -2.53,
+      "lon": 140.72
+    },
+    {
+      "name": "Kupang",
+      "lat": -10.18,
+      "lon": 123.61
+    },
+    {
+      "name": "Singapore",
+      "lat": 1.35,
+      "lon": 103.82
+    },
+    {
+      "name": "Kuala Lumpur",
+      "lat": 3.14,
+      "lon": 101.69
+    },
+    {
+      "name": "Kuching",
+      "lat": 1.55,
+      "lon": 110.34
+    },
+    {
+      "name": "Bandar Seri Begawan",
+      "lat": 4.9,
+      "lon": 114.94
+    }
+  ],
+  "water_caveat": "11% of detection is over shallow coastal water, where turbidity looks like thin smoke \u2014 treat it as unconfirmed.",
+  "smoke_over_water_pct": 11,
+  "frozen_reason": "no recent scene; showing 12 Sep 04:50 UTC, 19 h old"
+}
